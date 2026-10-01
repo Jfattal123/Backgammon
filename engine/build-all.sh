@@ -30,3 +30,7 @@ $EMCC -O3 obj-plain/*.o obj/glib/*.o -o $OUT/gnubg-engine-asm.js --embed-file da
 # 3. single-file SIMD build, inlined into the offline copy
 $EMCC -O3 -flto -msimd128 obj-simd2/*.o obj/glib/*.o -o $OUT/tools/gnubg-engine-single.js --embed-file data@/ -s SINGLE_FILE=1 $COMMON
 ls -la $OUT/gnubg-engine* $OUT/tools/gnubg-engine-single.js
+# 4. claude.ai artifact variant: artifacts can't serve .bin files, so the data is packed inside the .wasm
+mkdir -p $ENG/artifact-eng
+$EMCC -O3 -flto -msimd128 obj-simd2/*.o obj/glib/*.o -o $ENG/artifact-eng/gnubg-engine.js --embed-file data@/ $COMMON
+$EMCC -O3 -flto obj-plain/*.o obj/glib/*.o -o $ENG/artifact-eng/gnubg-engine-nosimd.js --embed-file data@/ $COMMON
