@@ -1,0 +1,33 @@
+<title>Prime Backgammon</title>
+<meta name="theme-color" content="#172427">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+/*STYLE*/
+</style>
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><span>Prime</span></div>
+    <div class="matchinfo" id="matchinfo"></div>
+    <div class="spacer"></div>
+    <div class="score" id="score" aria-live="polite"></div>
+    <div class="spacer"></div>
+    <button class="iconbtn labelled" id="btnReview" type="button" aria-label="Review analysis"></button>
+    <button class="iconbtn" id="btnMenu" type="button" aria-label="Menu" aria-haspopup="menu"></button>
+  </header>
+  <main class="stage">
+    <div class="boardbox">
+      <svg id="board" xmlns="http://www.w3.org/2000/svg" role="application" aria-label="Backgammon board"></svg>
+      <div class="toast" id="toast" role="status"></div>
+      <div class="tutor" id="tutor" hidden role="alert"></div>
+      <div class="actbar" id="actbar" hidden></div>
+    </div>
+  </main>
+</div>
+<div class="review" id="review" hidden></div>
+<!--WORKER-->
+<script>
+/*SCRIPT*/
+UI.init();
+</script>
