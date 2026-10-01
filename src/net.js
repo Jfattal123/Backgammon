@@ -169,7 +169,8 @@ const FbNet = (() => {
         if (!r.exists()) break;
       }
       reset({ code, role: 'host', name, cfg, out: [], inSeq: 0, oppName: '', uid }, h);
-      await within(ref().set({ cfg, created: firebase.database.ServerValue.TIMESTAMP, host: { uid, name, online: true } }), 12000);
+      // update() checks each child against its own rule (a set() on the game node itself would be refused)
+      await within(ref().update({ cfg, created: firebase.database.ServerValue.TIMESTAMP, host: { uid, name, online: true } }), 12000);
       watchOnline(); watch();
       return st;
     },
