@@ -336,7 +336,7 @@ const Game = (() => {
   function render(full) {
     const c = cur();
     board.setSpeed(SPEEDS[Settings.speed] || 1);
-    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot() });
+    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots() });
     board.drawCube({ on: M.cubeOn && !game().crawford, value: c.cube.value, owner: c.cube.owner });
     board.drawDice(null);
     board.drawButtons([]);
@@ -1126,7 +1126,7 @@ const Game = (() => {
       const c = cur();
       const sel = { dice: c.dice, phase };
       board.setSpeed(SPEEDS[Settings.speed] || 1);
-      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot() });
+      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots() });
       drawCubeNow(phase === 'preroll' && canDouble(0));
       if (phase === 'moving') drawMoveButtons();
       if (phase === 'preroll') board.drawButtons(prerollButtons(canDouble(0)));

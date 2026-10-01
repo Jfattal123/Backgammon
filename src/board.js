@@ -1,18 +1,30 @@
 /* ===================== BOARD (SVG) ===================== */
-const G = (() => {
-  const F = 14, FV = 26, RAIL = 54, PW = 64, BAR = 58, TRAY = 66, CD = 58;
-  const FH = 680;
-  const W = F + RAIL + 12 * PW + BAR + TRAY + F;
-  const H = FV * 2 + FH;
-  const FL = F + RAIL;                // field left
-  const XR = FL + 6 * PW + BAR;       // right half start
-  const BARX = FL + 6 * PW + BAR / 2;
-  const TRAYX = XR + 6 * PW + TRAY / 2;
-  const RAILX = F + RAIL / 2;
-  const PL = 5 * CD;                  // point length
-  const MIDY = FV + FH / 2;
-  return { F, FV, RAIL, PW, BAR, TRAY, CD, FH, W, H, FL, XR, BARX, TRAYX, RAILX, PL, MIDY };
-})();
+// Board geometry. SLOTS = how many checkers a point shows before the stack squeezes up:
+// 5 is the classic look; short landscape screens use fewer (bigger checkers), tall screens more.
+const G = { F: 14, FV: 26, RAIL: 54, PW: 64, BAR: 58, TRAY: 66, CD: 58, MID: 100 };
+G.W = G.F + G.RAIL + 12 * G.PW + G.BAR + G.TRAY + G.F;
+G.FL = G.F + G.RAIL;                 // field left
+G.XR = G.FL + 6 * G.PW + G.BAR;      // right half start
+G.BARX = G.FL + 6 * G.PW + G.BAR / 2;
+G.TRAYX = G.XR + 6 * G.PW + G.TRAY / 2;
+G.RAILX = G.F + G.RAIL / 2;
+G.midFor = (n) => n <= 4 ? 82 : 100;   // short boards get a slimmer middle strip
+G.setSlots = function (n) {
+  this.SLOTS = n; this.MID = this.midFor(n);
+  this.PL = n * this.CD;             // point length
+  this.FH = 2 * this.PL + this.MID;
+  this.H = this.FV * 2 + this.FH;
+  this.MIDY = this.FV + this.FH / 2;
+};
+G.heightFor = (n) => G.FV * 2 + 2 * n * G.CD + G.midFor(n);
+G.setSlots(5);
+// Pick the point length that makes the checkers biggest in a w x h box
+G.bestSlots = function (w, h) {
+  const px = (n) => this.CD * Math.min(w / this.W, h / this.heightFor(n));
+  let max = 0; for (let n = 3; n <= 10; n++) max = Math.max(max, px(n));
+  if (px(5) >= 40) { let best = 5; for (let n = 5; n <= 10; n++) if (px(n) >= px(5) * 0.99) best = n; return best; }
+  let best = 3; for (let n = 3; n <= 10; n++) if (px(n) >= max * 0.99) best = n; return best;
+};
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 let ROT = 0; // 90 when the board is drawn rotated for portrait screens
@@ -37,7 +49,7 @@ function geo(flip) {
   const isTop = (i) => i >= 12;
   function stackPos(loc, k, count) {
     if (loc.t === 'pt') {
-      const step = count <= 5 ? G.CD : (G.PL - G.CD) / (count - 1);
+      const step = count <= G.SLOTS ? G.CD : (G.PL - G.CD) / (count - 1);
       const y = isTop(loc.i) ? G.FV + G.CD / 2 + k * step : G.H - G.FV - G.CD / 2 - k * step;
       return { x: ptX(loc.i), y };
     }
@@ -48,7 +60,8 @@ function geo(flip) {
       return { x: mx(G.BARX), y };
     }
     // off tray
-    const y = loc.p === 0 ? G.H - G.FV - 12 - k * 15 : G.FV + 12 + k * 15;
+    const ts = Math.min(15, (G.FH / 2 - 40) / 14);
+    const y = loc.p === 0 ? G.H - G.FV - 12 - k * ts : G.FV + 12 + k * ts;
     return { x: mx(G.TRAYX), y };
   }
   const diceCenter = (p) => ({ x: mx(p === 0 ? G.XR + 3 * G.PW : G.FL + 3 * G.PW), y: G.MIDY });
@@ -183,8 +196,8 @@ function arrowPath(g, fromLoc, toLoc, fromK, toK) {
 // Full static board snapshot as SVG string (review / previews).
 // st: {b:[b0,b1], dice:[d0,d1]|null, diceP, cube, owner, arrows:[{p, pairs, color}] }
 function staticBoardSVG(st, o) {
-  const savedRot = ROT; ROT = 0;
-  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; }
+  const savedRot = ROT, savedSlots = G.SLOTS; ROT = 0; G.setSlots(5);
+  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setSlots(savedSlots); }
 }
 function staticBoardSVG0(st, o) {
   const flip = !!o.flip, humanLight = o.humanLight !== false;
@@ -242,7 +255,7 @@ function arrowsSVG(g, bb, p, pairs, color) {
 
 /* ---------- Interactive board ---------- */
 function createBoard(svg, cb) {
-  let flip = false, humanLight = true, showPips = true, rot = 0;
+  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5;
   let g = geo(false);
   const stacks = new Map(); // locKey -> [ids]
   const where = new Map();  // id -> loc
@@ -318,7 +331,7 @@ function createBoard(svg, cb) {
     let s = '';
     for (const [k, ids] of stacks) {
       if (!k.startsWith('pt') && !k.startsWith('bar')) continue;
-      if (ids.length > (k.startsWith('bar') ? 3 : 5)) {
+      if (ids.length > (k.startsWith('bar') ? 3 : G.SLOTS)) {
         const top = ids[ids.length - 1], pt = posOf.get(top), p = top < 15 ? 0 : 1;
         s += `<text class="cnt" x="${pt.x}" y="${pt.y}" dominant-baseline="central" text-anchor="middle" font-size="18" font-weight="800" fill="${checkerColors(p, humanLight).text}" style="pointer-events:none;font-family:var(--font-num)"${trT(pt.x, pt.y)}>${ids.length}</text>`;
       }
@@ -735,8 +748,9 @@ function createBoard(svg, cb) {
 
   build();
   return {
-    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; } build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
+    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; } G.setSlots(slots); build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
     get rot() { return rot; },
+    get slots() { return slots; },
     toScreen(x, y) { const m = root.getScreenCTM(); return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }; },
     setPositions, moveChecker, unmoveChecker, drawDice, rollDice, drawCube, drawButtons, drawStatus, showDests, clearDests, select,
     setInteractive(v) { interactive = v; if (!v) { selFrom = null; clearDests(); } },

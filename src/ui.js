@@ -22,6 +22,17 @@ function boardRot() {
   document.getElementById('app').classList.toggle('portrait', isPortrait());
   return 0;
 }
+// How many checkers fit on a point before stacks compress: chosen so the board fills the space
+// (taller on phones held upright, shorter and wider on phones held sideways).
+function boardSlots() {
+  const bx = document.querySelector('.boardbox');
+  if (!bx || typeof G === 'undefined') return 5;
+  const r = bx.getBoundingClientRect();
+  if (!r.width || !r.height) return 5;
+  const portrait = document.getElementById('app').classList.contains('portrait');
+  const h = r.height - (portrait ? 84 : 0);
+  return G.bestSlots(r.width, Math.max(120, h));
+}
 const dotStyle = (p) => `background:${(p === 0) === Settings.humanLight ? '#f2efe9' : '#1a1d21'}`;
 
 const UI = (() => {
@@ -41,9 +52,9 @@ const UI = (() => {
     const g = M.games[M.games.length - 1];
     const turn = M.cur ? M.cur.turn : -1;
     const len = M.matchTo ? `${M.matchTo}-pt` : 'Single';
-    sc.innerHTML = `<div class="side${turn === 0 ? ' turn' : ''}"><span class="dot" style="${dotStyle(0)}"></span><span>You</span><span class="pts">${M.score[0]}</span></div>
+    sc.innerHTML = `<div class="side${turn === 0 ? ' turn' : ''}"><span class="dot" style="${dotStyle(0)}"></span><span class="nm">You</span><span class="pts">${M.score[0]}</span></div>
       <span class="len">${len}</span>
-      <div class="side${turn === 1 ? ' turn' : ''}"><span class="pts">${M.score[1]}</span><span>${esc(Game.oppName)}</span><span class="dot" style="${dotStyle(1)}"></span></div>`;
+      <div class="side${turn === 1 ? ' turn' : ''}"><span class="pts">${M.score[1]}</span><span class="nm">${esc(Game.oppName)}</span><span class="dot" style="${dotStyle(1)}"></span></div>`;
     const bits = [];
     bits.push(M.matchTo ? `${M.matchTo}-point match` : 'Single game');
     bits.push(`Game ${g ? g.no : 1}`);
@@ -456,7 +467,7 @@ const UI = (() => {
       Game.key(e);
     });
     // initial board behind the setup card
-    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot() });
+    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots() });
     board.drawCube({ on: true, value: 1, owner: -1 });
     update();
     // re-orient the board when the screen shape changes (e.g. phone rotation)
@@ -468,11 +479,12 @@ const UI = (() => {
         const r = boardRot();
         const now = document.getElementById('app').classList.contains('portrait');
         renderBar();
-        if (r === lastRot && was === now) return;
+        const sl = boardSlots();
+        if (r === lastRot && was === now && sl === board.slots) return;
         if (Game.busy || (Game.M && ['opening', 'auto', 'botTurn', 'committing'].includes(Game.phase))) { rt = setTimeout(retry, 300); return; }
         lastRot = r;
         if (Game.M) Game.redraw();
-        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r }); board.drawCube({ on: true, value: 1, owner: -1 }); }
+        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r, slots: sl }); board.drawCube({ on: true, value: 1, owner: -1 }); }
       }, 150);
     };
     window.addEventListener('resize', onResize);

@@ -1,6 +1,6 @@
 /* ===================== REVIEW ===================== */
 const Review = (() => {
-  let M = null, scope = 'all', filt = 'all', who = 'both', sel = null, rows = [], running = false, candSel = null;
+  let M = null, scope = 'all', filt = 'all', who = 'both', sel = null, rows = [], running = false, candSel = null, tab = 'analysis';
   const deep = new Map();
 
   function games() { return scope === 'all' ? M.games : [M.games[scope]].filter(Boolean); }
@@ -110,9 +110,11 @@ const Review = (() => {
   function filtersHTML() {
     const c = counts();
     const f = [['all', 'All'], ['good', 'Good'], ['doubtful', 'Doubtful'], ['error', 'Errors'], ['blunder', 'Blunders']];
+    return `<div class="bands" id="fBand" role="group" aria-label="Show">${f.map(([v, l]) => `<button type="button" class="b-${v}" data-v="${v}" aria-pressed="${filt === v}"><span class="l">${l}</span><span class="n">${c[v]}</span></button>`).join('')}</div>`;
+  }
+  function whoHTML() {
     const w = [['both', 'Both'], ['you', 'You'], ['bot', pname(1)]];
-    return `<div class="filters" id="fBand">${f.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${filt === v}">${l} <span class="n">${c[v]}</span></button>`).join('')}</div>
-      <div class="filters" id="fWho">${w.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${who === v}">${l}</button>`).join('')}</div>`;
+    return `<div class="seg sm" id="fWho" role="group" aria-label="Player">${w.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${who === v}">${esc(l)}</button>`).join('')}</div>`;
   }
 
   function listHTML() {
@@ -133,117 +135,154 @@ const Review = (() => {
     return s;
   }
 
-  function detailHTML() {
-    if (sel == null || !rows[sel] || rows[sel].sep) return `${navHTML()}<div class="empty">No move selected. Use the arrows or pick a move from the list.</div><!--SPLIT-->`;
-    const { r, g, n } = rows[sel];
-    const flip = Settings.flip, humanLight = Settings.humanLight;
-    const st = { b: r.b, cubeOn: M.cubeOn && !g.crawford, cube: r.ctx.cube, owner: absOwner(r) };
-    const loss = recLoss(r), b = recBand(r);
-    let head = `<div class="dhead"><h3>Game ${g.no} · ${r.k === 'move' ? 'Move' : 'Turn'} ${n}</h3><span class="chip plain"><span class="pd" style="width:10px;height:10px;border-radius:50%;display:inline-block;${dotStyle(r.p)}"></span>${pname(r.p)}${r.k === 'move' ? ' · ' + r.dice.join('-') : ''}</span>
-      ${b ? `<span class="chip ${b}">${BAND_LABEL[b]}</span><span class="chip plain num">${fmtLoss(loss)}</span>` : ''}${r.k === 'move' && r.luck != null ? `<span class="chip plain num" title="Luck of this roll">Luck ${fmtEq(r.luck)}</span>` : ''}</div>`;
-    if (r.k === 'move') {
-      st.dice = r.dice; st.diceP = r.p;
-      const played = recPairs(r);
-      const an = r.an;
-      const dp = deep.get(r);
-      const cands = dp || (an ? an.cands : []);
-      const pIdxOrig = an ? an.played : -1;
-      let bestPairs = cands.length ? cands[0].m : null;
-      if (candSel != null && cands[candSel]) bestPairs = cands[candSel].m;
-      const same = bestPairs && R.key(...(() => { const x = R.simulatePairs(r.b[r.p], r.b[1 - r.p], bestPairs); return [x.me, x.opp]; })()) === R.key(...(() => { const x = R.simulatePairs(r.b[r.p], r.b[1 - r.p], played); return [x.me, x.opp]; })());
-      st.arrows = [{ p: r.p, pairs: played, color: 'amber' }];
-      if (bestPairs && !same) st.arrows.push({ p: r.p, pairs: bestPairs, color: 'green' });
-      const me = r.b[r.p], opp = r.b[1 - r.p];
-      const playedKey = (() => { const x = R.simulatePairs(me, opp, played); return R.key(x.me, x.opp); })();
-      let table = '';
-      if (r.forcedNone) table = `<div class="empty">No legal move with this roll.</div>`;
-      else if (!an && !dp) table = `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
-      else {
-        const top = cands[0] ? cands[0].eq : 0;
-        table = `<table class="ct"><thead><tr><th>#</th><th>Move</th><th class="n">Equity</th><th class="n">Diff</th><th class="n">Win</th><th class="n">W g</th><th class="n">L g</th><th class="n">Depth</th></tr></thead><tbody>
-          ${cands.map((c, i) => {
-            const k = (() => { const x = R.simulatePairs(me, opp, c.m); return R.key(x.me, x.opp); })();
-            const isPlayed = k === playedKey;
-            return `<tr class="${isPlayed ? 'played' : ''} ${i === 0 ? 'best' : ''}" data-c="${i}"><td>${(c.i != null ? c.i : i) + 1}</td><td class="num">${esc(R.notation(me, opp, c.m))}${isPlayed ? ' <span class="chip plain" style="padding:1px 6px;font-size:10.5px">Played</span>' : ''}</td>
-              <td class="n">${fmtEq(c.eq)}</td><td class="n">${i === 0 ? '' : (c.eq - top).toFixed(3)}</td>
-              <td class="n">${(c.pr[0] * 100).toFixed(1)}</td><td class="n">${(c.pr[1] * 100).toFixed(1)}</td><td class="n">${(c.pr[3] * 100).toFixed(1)}</td><td class="n" style="color:var(--muted)">${c.ply >= 0 ? c.ply + '-ply' : ''}</td></tr>`;
-          }).join('')}</tbody></table>
-          <div class="row" style="justify-content:space-between;padding-top:10px"><small style="color:var(--muted)">${dp ? 'Grandmaster (3-ply) check' : (LEVELS.find(l => l.v === (r.alv || 5)) || LEVELS[1]).name + ' analysis'} · ${an ? an.total : '?'} legal moves</small>
-          ${dp || (r.alv || 5) >= 7 ? '' : `<button class="btnx" id="deepBtn" type="button">Deeper check</button>`}</div>`;
+  // board pane: nav strip (prev / what this decision is / next) above the position
+  function boardHTML() {
+    const vis = visible(), k = vis.indexOf(sel);
+    const lbl = filt === 'all' ? 'decisions' : BAND_LABEL[filt].toLowerCase() + (filt === 'good' ? ' moves' : 's');
+    const count = `${vis.length ? (k >= 0 ? k + 1 : '–') + ' of ' + vis.length : 'No'} ${lbl}${who !== 'both' ? ' · ' + (who === 'you' ? 'you' : esc(pname(1))) : ''}`;
+    let l1 = '<span class="muted">Nothing selected</span>', board = '<div class="empty">Nothing to show with these filters.</div>';
+    if (sel != null && rows[sel] && !rows[sel].sep) {
+      const { r, g, n } = rows[sel];
+      const loss = recLoss(r), b = recBand(r);
+      const forced = r.k === 'move' && (r.forced || r.forcedNone || (r.an && r.an.total <= 1));
+      const what = r.k === 'move' ? r.dice.join('-') : r.k === 'cube' ? 'Cube' : 'Take/pass';
+      l1 = `<span class="pd" style="${dotStyle(r.p)}"></span><b>${esc(pname(r.p))}</b><span class="num">${what}</span>
+        ${forced ? '<span class="chip plain">Forced</span>' : b ? `<span class="chip ${b}">${BAND_LABEL[b]}</span>${b === 'good' && loss < 0.0005 ? '' : `<span class="num muted">${fmtLoss(loss)}</span>`}` : '<span class="spin"></span>'}
+        ${r.k === 'move' ? luckTag(r.luck) : ''}`;
+      const st = { b: r.b, cubeOn: M.cubeOn && !g.crawford, cube: r.ctx.cube, owner: absOwner(r) };
+      if (r.k === 'move') {
+        st.dice = r.dice; st.diceP = r.p;
+        const best = bestPairsFor(r);
+        st.arrows = [{ p: r.p, pairs: recPairs(r), color: 'amber' }];
+        if (best && !samePos(r, best, recPairs(r))) st.arrows.push({ p: r.p, pairs: best, color: 'green' });
       }
-      head += `<div class="dhead" style="padding-top:0;gap:14px;font-size:13.5px"><span><span style="color:#e0a033;font-weight:700">Played</span> <span class="num">${esc(r.forcedNone ? '—' : R.notation(me, opp, played))}</span></span>
-        ${bestPairs && cands.length ? `<span><span style="color:var(--good);font-weight:700">${candSel ? 'Selected' : 'Best'}</span> <span class="num">${esc(R.notation(me, opp, bestPairs))}</span></span>` : ''}</div>`;
-      return `${navHTML()}${head}<div class="mini">${staticBoardSVG(st, { flip, humanLight, label: 'Position before the move' })}</div><!--SPLIT-->${table}`;
+      board = staticBoardSVG(st, { flip: Settings.flip, humanLight: Settings.humanLight, label: r.k === 'move' ? 'Position before the move' : 'Position at the cube decision' });
+      return [`<button class="navbtn" id="navPrev" type="button" aria-label="Previous" ${k <= 0 ? 'disabled' : ''}>${ICON.back}</button>
+        <div class="info"><div class="l1">${l1}</div><div class="l2">${count} · Game ${g.no}, ${r.k === 'move' ? 'move' : 'turn'} ${n}</div></div>
+        <button class="navbtn flipx" id="navNext" type="button" aria-label="Next" ${k >= vis.length - 1 ? 'disabled' : ''}>${ICON.back}</button>`,
+        `<div class="mini">${board}</div>`];
     }
-    // cube decision
+    return [`<button class="navbtn" id="navPrev" type="button" aria-label="Previous" disabled>${ICON.back}</button>
+      <div class="info"><div class="l1">${l1}</div><div class="l2">${count}</div></div>
+      <button class="navbtn flipx" id="navNext" type="button" aria-label="Next" ${vis.length ? '' : 'disabled'}>${ICON.back}</button>`, `<div class="mini">${board}</div>`];
+  }
+  function candsFor(r) { return deep.get(r) || (r.an ? r.an.cands : []); }
+  function bestPairsFor(r) { const c = candsFor(r); if (!c.length) return null; return (candSel != null && c[candSel] ? c[candSel] : c[0]).m; }
+  function posKey(r, pairs) { const x = R.simulatePairs(r.b[r.p], r.b[1 - r.p], pairs); return R.key(x.me, x.opp); }
+  function samePos(r, a, b) { return posKey(r, a) === posKey(r, b); }
+
+  // analysis pane: what was played vs best, the candidate list or the cube numbers
+  function analysisHTML() {
+    if (sel == null || !rows[sel] || rows[sel].sep) return `<div class="empty">Pick a decision from Moves, or change the filters at the top.</div>`;
+    const { r } = rows[sel];
+    if (r.k === 'move') {
+      const played = recPairs(r), an = r.an, dp = deep.get(r), cands = candsFor(r);
+      const me = r.b[r.p], opp = r.b[1 - r.p];
+      const best = bestPairsFor(r);
+      let s = `<div class="pb"><div><span class="k amber">Played</span><span class="num">${esc(r.forcedNone ? 'No legal move' : R.notation(me, opp, played))}</span></div>
+        ${best && cands.length && !samePos(r, best, played) ? `<div><span class="k green">${candSel ? 'Selected' : 'Best'}</span><span class="num">${esc(R.notation(me, opp, best))}</span></div>` : best && cands.length ? '<div><span class="k green">Best</span><span class="muted">Same as played</span></div>' : ''}
+        ${r.luck != null ? `<div><span class="k">Roll luck</span><span class="num">${fmtEq(r.luck)}</span></div>` : ''}</div>`;
+      if (r.forcedNone) return s;
+      if (!an && !dp) return s + `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
+      const top = cands[0] ? cands[0].eq : 0;
+      const playedKey = posKey(r, played);
+      s += `<div class="tablewrap"><table class="ct"><thead><tr><th>#</th><th>Move</th><th class="n">Equity</th><th class="n">Diff</th><th class="n">Win</th><th class="n">W g</th><th class="n">L g</th><th class="n">Depth</th></tr></thead><tbody>
+        ${cands.map((c, i) => {
+          const isPlayed = posKey(r, c.m) === playedKey;
+          return `<tr class="${isPlayed ? 'played' : ''} ${i === 0 ? 'best' : ''} ${candSel === i || (candSel == null && i === 0) ? 'sel' : ''}" data-c="${i}"><td>${(c.i != null ? c.i : i) + 1}</td><td class="num">${esc(R.notation(me, opp, c.m))}${isPlayed ? ' <span class="chip plain tiny">Played</span>' : ''}</td>
+            <td class="n">${fmtEq(c.eq)}</td><td class="n">${i === 0 ? '' : (c.eq - top).toFixed(3)}</td>
+            <td class="n">${(c.pr[0] * 100).toFixed(1)}</td><td class="n">${(c.pr[1] * 100).toFixed(1)}</td><td class="n">${(c.pr[3] * 100).toFixed(1)}</td><td class="n muted">${c.ply >= 0 ? c.ply + '-ply' : ''}</td></tr>`;
+        }).join('')}</tbody></table></div>
+        <div class="row" style="justify-content:space-between;padding:10px 4px 4px"><small class="muted">Tap a move to see it on the board · ${dp ? 'Grandmaster (3-ply) check' : (LEVELS.find(l => l.v === (r.alv || 5)) || LEVELS[1]).name + ' analysis'} · ${an ? an.total : '?'} legal moves</small>
+        ${dp || (r.alv || 5) >= 7 ? '' : `<button class="btnx" id="deepBtn" type="button">Deeper check</button>`}</div>`;
+      return s;
+    }
     const a = r.an;
-    const doubler = r.doubler;
-    let body = `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
-    if (a) {
-      const dbl = Math.min(a.dt, a.dp);
-      const proper = (() => { if (dbl <= a.nd) return a.dt > a.dp && a.dp > a.nd ? 'Too good to double, pass' : (a.dt <= a.dp ? 'No double, take' : 'No double'); return a.dt <= a.dp ? 'Double, take' : 'Double, pass'; })();
-      const mine = r.k === 'cube' ? (r.action === 'double' ? 'Double' : 'No double') : (r.action === 'take' ? 'Take' : 'Pass');
-      const bestRow = dbl > a.nd ? (a.dt <= a.dp ? 'dt' : 'dp') : 'nd';
-      body = `<div class="cubegrid">
-        <span class="${bestRow === 'nd' ? 'best' : ''}">No double</span><span class="n">${fmtEq(a.nd)}</span>
-        <span class="${bestRow === 'dt' ? 'best' : ''}">Double, take</span><span class="n">${fmtEq(a.dt)}</span>
-        <span class="${bestRow === 'dp' ? 'best' : ''}">Double, pass</span><span class="n">${fmtEq(a.dp)}</span>
-        <span style="color:var(--muted)">Proper action</span><span><b>${proper}</b></span>
-        <span style="color:var(--muted)">${pname(r.p)} chose</span><span><b>${mine}</b>${r.tutorSwitched ? ' <small style="color:var(--muted)">(changed after tutor)</small>' : ''}</span>
-        <span style="color:var(--muted)">Equity lost</span><span class="n">${fmtLoss(r.loss)}</span>
-        <span style="color:var(--muted)">Doubler wins</span><span class="n">${(a.pr[0] * 100).toFixed(1)}% · gammons ${(a.pr[1] * 100).toFixed(1)}%</span>
-        <span style="color:var(--muted)">Doubler loses gammon</span><span class="n">${(a.pr[3] * 100).toFixed(1)}%</span>
-      </div><small style="color:var(--muted);padding:0 4px 12px;display:block">Equities are from ${doubler === 0 ? 'your' : pname(1) + '’s'} side as the player who could double, in normalised money-game units.</small>`;
-    }
-    return `${navHTML()}${head}<div class="mini">${staticBoardSVG(st, { flip, humanLight, label: 'Position at the cube decision' })}</div><!--SPLIT-->${body}`;
+    if (!a) return `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
+    const dbl = Math.min(a.dt, a.dp);
+    const proper = (() => { if (dbl <= a.nd) return a.dt > a.dp && a.dp > a.nd ? 'Too good to double, pass' : (a.dt <= a.dp ? 'No double, take' : 'No double'); return a.dt <= a.dp ? 'Double, take' : 'Double, pass'; })();
+    const mine = r.k === 'cube' ? (r.action === 'double' ? 'Double' : 'No double') : (r.action === 'take' ? 'Take' : 'Pass');
+    const bestRow = dbl > a.nd ? (a.dt <= a.dp ? 'dt' : 'dp') : 'nd';
+    return `<div class="cubegrid">
+      <span class="muted">${esc(pname(r.p))} chose</span><span><b>${mine}</b>${r.tutorSwitched ? ' <small class="muted">(changed after tutor)</small>' : ''}</span>
+      <span class="muted">Proper action</span><span><b>${proper}</b></span>
+      <span class="muted">Equity lost</span><span class="n">${fmtLoss(r.loss)}</span>
+      <span class="hr2"></span><span class="hr2"></span>
+      <span class="${bestRow === 'nd' ? 'best' : ''}">No double</span><span class="n">${fmtEq(a.nd)}</span>
+      <span class="${bestRow === 'dt' ? 'best' : ''}">Double, take</span><span class="n">${fmtEq(a.dt)}</span>
+      <span class="${bestRow === 'dp' ? 'best' : ''}">Double, pass</span><span class="n">${fmtEq(a.dp)}</span>
+      <span class="muted">Doubler wins</span><span class="n">${(a.pr[0] * 100).toFixed(1)}% · gammons ${(a.pr[1] * 100).toFixed(1)}%</span>
+      <span class="muted">Doubler loses gammon</span><span class="n">${(a.pr[3] * 100).toFixed(1)}%</span>
+    </div><small class="muted" style="padding:0 4px 8px;display:block">Equities are from ${r.doubler === 0 ? 'your' : esc(pname(1)) + '’s'} side as the player who could double, in normalised money-game units.</small>`;
   }
 
   function visible() { return rows.map((row, i) => (!row.sep && passes(row)) ? i : -1).filter(i => i >= 0); }
-  function navHTML() {
-    const vis = visible(), k = vis.indexOf(sel);
-    const lbl = filt === 'all' ? 'decisions' : BAND_LABEL[filt].toLowerCase() + (filt === 'good' ? ' moves' : 's');
-    return `<div class="rvnav"><button class="iconbtn" id="navPrev" aria-label="Previous" ${k <= 0 ? 'disabled' : ''}>${ICON.back}</button>
-      <span class="num">${vis.length ? (k >= 0 ? k + 1 : '–') + ' of ' + vis.length : 'None'} <small>${lbl}${who !== 'both' ? ' · ' + (who === 'you' ? 'you' : pname(1)) : ''}</small></span>
-      <button class="iconbtn flipx" id="navNext" aria-label="Next" ${k >= vis.length - 1 ? 'disabled' : ''}>${ICON.back}</button></div>`;
-  }
   function ensureSel() {
     const vis = visible();
     if (!vis.includes(sel)) sel = vis.length ? vis[0] : null;
     candSel = null;
   }
+  const TABS = [['moves', 'Moves'], ['analysis', 'Analysis'], ['stats', 'Stats']];
   function render(keepScroll) {
     const el = $('#review');
-    const list = el.querySelector('.movelist');
-    const st = list ? list.scrollTop : 0;
-    const scopes = [['all', M.matchTo ? 'Match' : 'Game']].concat(M.matchTo ? M.games.map((g, i) => [String(i), `Game ${g.no}`]) : []);
-    el.innerHTML = `<div class="rv-top">
-        <button class="iconbtn" id="rvBack" aria-label="Back to the board">${ICON.back}</button>
+    const keep = {};
+    if (keepScroll) for (const id of ['rvMoves', 'rvAnalysis', 'rvStats']) { const x = $('#' + id); if (x) keep[id] = x.scrollTop; }
+    const scopes = [['all', M.matchTo ? 'Whole match' : 'Game']].concat(M.matchTo ? M.games.map((g, i) => [String(i), `Game ${g.no}`]) : []);
+    el.dataset.tab = tab;
+    el.innerHTML = `<header class="rvh">
+        <button class="iconbtn" id="rvBack" type="button" aria-label="Back to the board">${ICON.back}</button>
         <h1>Review</h1>
-        <div class="seg" id="rvScope" style="flex:0 1 auto;min-width:0;overflow-x:auto;flex-wrap:nowrap">${scopes.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${String(scope) === v}">${l}</button>`).join('')}</div>
-        <div class="spacer"></div><span id="rvProg"></span></div>
+        ${scopes.length > 1 ? `<select class="sel sm" id="rvScope" aria-label="Which games">${scopes.map(([v, l]) => `<option value="${v}" ${String(scope) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
+        <span id="rvProg"></span>
+        <div class="spacer"></div>
+        ${whoHTML()}
+        ${filtersHTML()}
+      </header>
       <div class="rv-body">
-        <div class="panel detail" id="rvBoard"></div>
-        <div class="panel cands" id="rvCands"></div>
-        <div class="rv-side">${filtersHTML()}<div class="panel movelist" role="list">${listHTML()}</div>${statsHTML()}</div>
+        <div class="rvnav panel" id="rvNav"></div>
+        <section class="rvboard panel" id="rvBoard"></section>
+        <div class="tabs" role="tablist">${TABS.map(([v, l]) => `<button type="button" role="tab" data-t="${v}" aria-selected="${tab === v}">${l}</button>`).join('')}</div>
+        <section class="pane panel" id="rvMoves"><div class="movelist" role="list">${listHTML()}</div></section>
+        <section class="pane panel" id="rvAnalysis">${analysisHTML()}</section>
+        <section class="pane panel" id="rvStats">${statsHTML()}</section>
       </div>`;
-    fillDetail();
-    if (keepScroll) el.querySelector('.movelist').scrollTop = st;
+    fillBoard();
+    for (const id in keep) $('#' + id).scrollTop = keep[id];
     wire();
+    fit();
+    if (!keepScroll) showSel();
     progress();
   }
-  function fillDetail() {
-    const [top, bottom] = detailHTML().split('<!--SPLIT-->');
-    $('#rvBoard').innerHTML = top;
-    $('#rvCands').innerHTML = bottom || '';
-    $('#rvCands').hidden = !bottom;
+  // in side-by-side layouts the board column is exactly as wide as the board at full height
+  function fit() {
+    const body = $('#review .rv-body'), b = $('#rvBoard');
+    if (!body || !b) return;
+    const h = b.clientHeight - 12;
+    body.style.setProperty('--bw', Math.max(220, Math.round(h * 974 / 732) + 12) + 'px');
   }
-  function renderDetail() { fillDetail(); wireDetail(); }
+  function showSel() {
+    const b = $(`#review .mrow[data-i="${sel}"]`); if (b) b.scrollIntoView({ block: 'nearest' });
+  }
+  function fillBoard() { const [nav, bd] = boardHTML(); $('#rvNav').innerHTML = nav; $('#rvBoard').innerHTML = bd; }
+  function renderDetail() {
+    fillBoard();
+    $('#rvAnalysis').innerHTML = analysisHTML();
+    $('#review').querySelectorAll('.mrow').forEach(b => b.setAttribute('aria-current', String(+b.dataset.i === sel)));
+    wireDetail();
+  }
+  function setTab(t) {
+    tab = t; $('#review').dataset.tab = t;
+    $('#review').querySelectorAll('.tabs [data-t]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.t === t)));
+    if (t === 'moves') showSel();
+  }
   function wire() {
     const el = $('#review');
     $('#rvBack').onclick = close;
-    $('#rvScope').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; scope = b.dataset.v === 'all' ? 'all' : +b.dataset.v; sel = null; candSel = null; buildRows(); render(); };
+    const sc = $('#rvScope');
+    if (sc) sc.onchange = () => { scope = sc.value === 'all' ? 'all' : +sc.value; sel = null; candSel = null; buildRows(); ensureSel(); render(); };
     $('#fBand').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; filt = b.dataset.v; ensureSel(); render(); };
     $('#fWho').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; who = b.dataset.v; ensureSel(); render(); };
+    el.querySelector('.tabs').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) setTab(b.dataset.t); };
     el.querySelector('.movelist').onclick = (e) => { const b = e.target.closest('.mrow'); if (!b) return; select(+b.dataset.i); };
     wireDetail();
   }
@@ -259,33 +298,27 @@ const Review = (() => {
       db.disabled = true; db.innerHTML = '<span class="spin"></span>Checking…';
       try {
         const res = await Engine.call('moves', r.b[1 - r.p], r.b[r.p], r.dice[0], r.dice[1], r.ctx, 7, R.toGnubg(r.subs));
-        if (false) return;
         deep.set(r, res.moves.slice(0, 10).map((m, i) => ({ m: m.move, eq: m.eq, pr: m.probs, ply: m.ply, i })));
       } catch (e) { UI.toast('Deeper check failed'); }
       candSel = null;
       if (rows[sel] && rows[sel].r === r) renderDetail();
     };
   }
-  function select(i) {
-    sel = i; candSel = null;
-    const el = $('#review');
-    el.querySelectorAll('.mrow').forEach(b => b.setAttribute('aria-current', String(+b.dataset.i === i)));
-    renderDetail();
-  }
+  function select(i) { sel = i; candSel = null; renderDetail(); }
   function move(delta) {
-    const vis = rows.map((row, i) => (!row.sep && passes(row)) ? i : -1).filter(i => i >= 0);
+    const vis = visible();
     if (!vis.length) return;
     let k = vis.indexOf(sel);
     k = k < 0 ? 0 : Math.max(0, Math.min(vis.length - 1, k + delta));
     select(vis[k]);
-    const b = $(`#review .mrow[data-i="${vis[k]}"]`); b && b.scrollIntoView({ block: 'nearest' });
+    showSel();
   }
   function progress() {
     const missing = [];
     for (const g of M.games) for (const r of g.recs) if ((r.k === 'move' && (!r.an || r.luck == null)) || ((r.k === 'cube' || r.k === 'take') && !r.an)) missing.push(r);
     const pe = $('#rvProg');
     if (!missing.length) { if (pe) pe.innerHTML = ''; return; }
-    if (pe) pe.innerHTML = `<span class="loading"><span class="spin"></span>Analysing ${missing.length} decision${missing.length > 1 ? 's' : ''}…</span>`;
+    if (pe) pe.innerHTML = `<span class="loading" title="Analysing ${missing.length} decision${missing.length > 1 ? 's' : ''}"><span class="spin"></span><span class="num">${missing.length}</span><span class="lt">left</span></span>`;
     if (running) return;
     running = true;
     (async () => {
@@ -294,7 +327,7 @@ const Review = (() => {
         await Game.ensureAnalysis(r);
         k++;
         if (!$('#review') || $('#review').hidden) break;
-        if (k % 6 === 0 || k === missing.length) { render(true); if (sel != null) renderDetail(); }
+        if (k % 6 === 0 || k === missing.length) render(true);
       }
       running = false;
       if (!$('#review').hidden) render(true);
@@ -310,6 +343,7 @@ const Review = (() => {
     if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'k') { e.preventDefault(); move(-1); }
   }
   document.addEventListener('keydown', onKey);
+  let ro = null;
 
   function open(match, sc, fromGame) {
     M = match;
@@ -323,8 +357,10 @@ const Review = (() => {
     if (first < 0) first = find(['doubtful']);
     if (first < 0) first = rows.findIndex(row => !row.sep);
     sel = first >= 0 ? first : null;
+    tab = 'analysis';
     $('#review').hidden = false;
     render();
+    if (!ro && window.ResizeObserver) { ro = new ResizeObserver(() => fit()); ro.observe($('#review')); }
   }
   function close() { $('#review').hidden = true; $('#review').innerHTML = ''; }
   return { open, close };

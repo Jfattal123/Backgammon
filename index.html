@@ -165,11 +165,11 @@ button { font: inherit; color: inherit; }
 .toast.show { opacity: 1; }
 
 /* ---------- overlays ---------- */
-.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 20; display: grid; place-items: center; padding: 16px; animation: fade .15s ease-out; }
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 20; display: grid; place-items: center; padding: 12px; animation: fade .15s ease-out; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .card {
   background: var(--surface-2); border-radius: 18px; box-shadow: var(--shadow); width: min(460px, 100%);
-  max-height: calc(100% - 8px); overflow: auto; padding: 22px; display: grid; gap: 18px; border: 1px solid var(--line);
+  box-sizing: border-box; max-height: calc(100dvh - 24px); overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding: 22px; display: grid; gap: 18px; border: 1px solid var(--line);
 }
 .card h2 { font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1.05; margin: 0; text-wrap: balance; }
 .card .sub { color: var(--muted); margin: -10px 0 0; font-size: 14px; line-height: 1.45; }
@@ -212,17 +212,93 @@ select.sel { appearance: none; background: var(--bg); border: 0; border-radius: 
 
 /* ---------- review ---------- */
 .review { position: fixed; inset: 0; z-index: 15; background: var(--bg); display: flex; flex-direction: column; animation: fade .15s ease-out; }
-.review .rv-top { display: flex; align-items: center; gap: 10px; padding-inline: max(14px, env(safe-area-inset-left, 0px)) max(14px, env(safe-area-inset-right, 0px)); padding-block: calc(8px + env(safe-area-inset-top, 0px)) 8px; flex-wrap: wrap; }
-.review .rv-top h1 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin: 0; }
-.rv-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 400px) 1fr; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "side board" "side cands"; gap: 12px; padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px)); padding-block: 0 max(12px, env(safe-area-inset-bottom, 0px)); }
-.rv-side { grid-area: side; min-height: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-#rvBoard { grid-area: board; padding-bottom: 10px; }
-#rvCands { grid-area: cands; overflow: auto; padding: 10px; min-height: 0; }
-.rvnav { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px 0; }
-.rvnav .num { font-weight: 600; font-size: 14px; text-align: center; }
-.rvnav small { color: var(--muted); font-family: var(--font-ui); font-weight: 600; }
-.rvnav .iconbtn[disabled] { opacity: .35; cursor: default; }
+/* header: every control lives up here */
+.rvh { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding-inline: max(10px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-right, 0px)); padding-block: calc(8px + env(safe-area-inset-top, 0px)) 8px; }
+.rvh h1 { font-family: var(--font-display); font-weight: 400; font-size: 23px; margin: 0; }
+.rvh .spacer { flex: 1 1 0; }
+.rvh .loading { gap: 6px; font-size: 12.5px; }
+select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; }
+.seg.sm { flex-wrap: nowrap; flex: 0 0 auto; }
+.seg.sm button { flex: 0 0 auto; min-height: 34px; padding: 6px 11px; font-size: 13px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.bands { display: flex; gap: 6px; flex: 1 1 420px; min-width: 0; justify-content: flex-end; }
+.bands button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; min-height: 36px; }
+.bands button::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+.bands .b-all::before { display: none; }
+.bands .b-good::before { background: var(--good); } .bands .b-doubtful::before { background: var(--doubtful); }
+.bands .b-error::before { background: var(--error); } .bands .b-blunder::before { background: var(--blunder); }
+.bands button .n { font-family: var(--font-num); opacity: .7; font-weight: 500; }
+.bands button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+/* body: board + tabbed panes. Default (tall screens): stacked. */
+.rv-body { flex: 1 1 auto; min-height: 0; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); grid-template-areas: "nav" "board" "tabs" "pane";
+  padding-inline: max(8px, env(safe-area-inset-left, 0px)) max(8px, env(safe-area-inset-right, 0px)); padding-block: 0 max(8px, env(safe-area-inset-bottom, 0px)); }
+.rvboard { grid-area: board; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.rvboard .mini { box-sizing: border-box; padding: 6px; display: block; min-height: 0; aspect-ratio: 974 / 732; max-height: 44dvh; width: 100%; }
+.rvboard .mini svg { width: 100%; height: 100%; display: block; }
+.rvnav { grid-area: nav; display: flex; align-items: center; gap: 6px; padding: 5px; min-width: 0; }
+.rvnav .info { flex: 1; min-width: 0; display: grid; gap: 2px; justify-items: center; text-align: center; }
+.rvnav .l1 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: center; font-size: 14px; }
+.rvnav .l1 .pd { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.25); }
+.rvnav .l2 { color: var(--muted); font-size: 12px; font-weight: 600; }
+.navbtn { width: 48px; height: 44px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; }
+.navbtn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.navbtn[disabled] { opacity: .35; cursor: default; }
 .flipx svg { transform: scaleX(-1); }
+.muted { color: var(--muted); }
+.tabs { grid-area: tabs; display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+.tabs button { flex: 1 1 0; border: 0; background: transparent; border-radius: 9px; padding: 7px 10px; font-weight: 700; font-size: 13.5px; color: var(--muted); cursor: pointer; min-height: 36px; }
+.tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); }
+.pane { grid-area: pane; overflow: auto; min-height: 0; display: none; padding: 8px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.review[data-tab="moves"] #rvMoves, .review[data-tab="analysis"] #rvAnalysis, .review[data-tab="stats"] #rvStats { display: block; }
+.movelist { padding: 0; }
+.pb { display: grid; gap: 4px; padding: 4px 4px 10px; font-size: 13.5px; }
+.pb > div { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.pb .k { font-weight: 700; min-width: 74px; color: var(--muted); }
+.pb .k.amber { color: #e0a033; } .pb .k.green { color: var(--good); }
+.tablewrap { overflow-x: auto; }
+.chip.tiny { padding: 1px 6px; font-size: 10.5px; }
+table.ct tr.sel td { box-shadow: inset 0 -2px 0 var(--good); }
+.cubegrid .hr2 { height: 1px; background: var(--line); }
+
+/* side by side: board column sized to the board, panes beside it (laptops, phones on their side) */
+@media (min-aspect-ratio: 1/1) and (min-width: 600px) {
+  .rv-body { grid-template-columns: min(var(--bw, 60%), 62%) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "nav nav" "board tabs" "board pane"; }
+  .rvnav .info { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 14px; }
+  .rvboard .mini { aspect-ratio: auto; max-height: none; flex: 1 1 0; }
+}
+/* big screens: the move list gets its own column too */
+@media (min-aspect-ratio: 1/1) and (min-width: 1180px) and (min-height: 560px) {
+  .rv-body { grid-template-columns: 340px min(var(--bw, 50%), calc(100% - 340px - 400px - 16px)) minmax(0, 1fr); grid-template-areas: "moves nav nav" "moves board tabs" "moves board pane"; }
+  #rvMoves { grid-area: moves; display: block; }
+  .tabs [data-t="moves"] { display: none; }
+  .review[data-tab="moves"] #rvAnalysis { display: block; }
+}
+/* phones: header wraps to two rows, the filters become one even row */
+@media (max-width: 640px) {
+  .rvh h1 { display: none; }
+  .bands { flex: 1 1 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  .bands button { flex-direction: column; gap: 0; padding: 4px 2px; border-radius: 10px; font-size: 11.5px; min-height: 44px; justify-content: center; }
+  .bands button::before { position: absolute; display: none; }
+  .bands button .l { display: inline-flex; align-items: center; gap: 4px; }
+  .bands button .n { font-size: 14px; opacity: 1; font-weight: 600; }
+  .bands .b-good .n { color: var(--good); } .bands .b-doubtful .n { color: var(--doubtful); } .bands .b-error .n { color: var(--error); } .bands .b-blunder .n { color: var(--blunder); }
+  .bands button[aria-pressed="true"] .n { color: inherit; }
+  table.ct th:nth-child(6), table.ct td:nth-child(6), table.ct th:nth-child(7), table.ct td:nth-child(7), table.ct th:nth-child(8), table.ct td:nth-child(8) { display: none; }
+  .mrow { grid-template-columns: 26px 12px 30px 1fr auto; gap: 6px; padding: 8px 6px; }
+  .rvh .loading .lt { display: none; }
+}
+/* phones on their side: one slim header row, small gaps */
+@media (orientation: landscape) and (max-height: 520px) {
+  .rvh { flex-wrap: nowrap; padding-block: max(4px, env(safe-area-inset-top, 0px)) 4px; gap: 6px; }
+  .rvh h1, .rvh .spacer { display: none; }
+  .bands { flex: 1 1 auto; display: flex; overflow-x: auto; scrollbar-width: none; justify-content: flex-start; }
+  .bands button { min-height: 34px; padding: 4px 9px; font-size: 12.5px; }
+  .rv-body { gap: 6px; }
+  .rvnav { padding: 4px; }
+  .navbtn { width: 44px; height: 38px; }
+  .tabs button { min-height: 32px; padding: 4px 8px; }
+  table.ct th:nth-child(7), table.ct td:nth-child(7), table.ct th:nth-child(8), table.ct td:nth-child(8) { display: none; }
+}
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; min-width: 0; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); flex: 0 0 auto; }
 .stat { background: var(--surface); padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
@@ -235,11 +311,6 @@ select.sel { appearance: none; background: var(--bg); border: 0; border-radius: 
 .stat .kv span:nth-child(odd) { color: var(--muted); }
 .stat .kv span:nth-child(even) { font-family: var(--font-num); text-align: right; }
 .stat .rating { font-size: 12px; font-weight: 700; color: var(--muted); }
-.filters { display: flex; gap: 6px; flex-wrap: wrap; flex: 0 0 auto; }
-.filters button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 11px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
-.filters button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-.filters button .n { font-family: var(--font-num); opacity: .7; font-weight: 500; }
-.movelist { flex: 1; min-height: 120px; overflow: auto; padding: 4px; }
 .mrow { display: grid; grid-template-columns: 34px 16px 40px 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; cursor: pointer; border: 0; background: transparent; width: 100%; text-align: left; font-size: 13.5px; }
 .mrow:hover { background: var(--bg); }
 .mrow[aria-current="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
@@ -250,19 +321,12 @@ select.sel { appearance: none; background: var(--bg); border: 0; border-radius: 
 .mrow .mv.cube { font-family: var(--font-ui); font-weight: 600; }
 .mrow .right { display: flex; align-items: center; gap: 6px; }
 .mrow .loss { font-family: var(--font-num); font-size: 12px; color: var(--muted); min-width: 46px; text-align: right; }
+.mrow .chip { font-size: 11px; padding: 2px 7px; gap: 5px; }
+.mrow .chip::before { width: 6px; height: 6px; }
 .mrow .lk { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
 .mrow .lk.up { color: var(--luck-good); background: color-mix(in srgb, var(--luck-good) 14%, transparent); }
 .mrow .lk.down { color: var(--luck-bad); background: color-mix(in srgb, var(--luck-bad) 14%, transparent); }
 .gamesep { font-size: 11.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: var(--muted); padding: 12px 10px 4px; display: flex; justify-content: space-between; gap: 8px; }
-.detail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.detail > .dhead { flex: 0 0 auto; }
-.detail > .mini { flex: 0 0 auto; }
-.detail > .cands { flex: 1 1 auto; }
-.detail .dhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px 0; }
-.detail .dhead h3 { margin: 0; font-size: 16px; }
-.detail .mini { padding-inline: 10px; display: flex; justify-content: center; }
-.detail .mini svg { width: auto; height: min(44vh, 480px); max-width: 100%; display: block; aspect-ratio: 974 / 728; }
-.cands { overflow: auto; padding: 0 10px 12px; min-height: 0; }
 table.ct { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.ct th { text-align: left; font-size: 11px; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.ct td { padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -280,15 +344,6 @@ table.ct tr:hover td { background: var(--bg); }
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: sp .8s linear infinite; }
 @keyframes sp { to { transform: rotate(360deg); } }
 
-@media (max-width: 820px), (max-aspect-ratio: 1/1) {
-  .rv-body { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-rows: max-content; grid-template-areas: "board" "cands" "side"; overflow: auto; }
-  #rvBoard { position: sticky; top: 0; z-index: 3; box-shadow: 0 8px 18px rgba(0,0,0,.12); }
-  #rvCands { overflow: visible; }
-  .detail .mini svg { height: auto; width: 100%; max-height: 34vh; }
-  .rv-side { min-height: auto; }
-  .movelist { max-height: none; overflow: visible; }
-  table.ct th:nth-child(6), table.ct td:nth-child(6), table.ct th:nth-child(7), table.ct td:nth-child(7) { display: none; }
-}
 @media (max-width: 560px) {
   .matchinfo { display: none; }
   .brand span { display: none; }
@@ -308,14 +363,37 @@ table.ct tr:hover td { background: var(--bg); }
 
 /* ---------- portrait: board on top, big controls underneath ---------- */
 .dicebtn { border: 0; background: transparent; padding: 0 4px; display: inline-flex; gap: 8px; cursor: pointer; color: var(--fg); }
-#app.portrait .boardbox { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 14px; padding-top: 6px; }
-#app.portrait #board { width: 100%; height: auto; max-height: none; }
+#app.portrait .stage { padding-inline: max(4px, env(safe-area-inset-left, 0px)) max(4px, env(safe-area-inset-right, 0px)); }
+#app.portrait .boardbox { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding-top: 4px; }
+#app.portrait #board { flex: 1 1 0; min-height: 0; width: 100%; height: auto; max-height: none; }
 #app.portrait .actbar { position: static; transform: none; width: 100%; max-width: 560px; min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #app.portrait .actbar[hidden] { display: flex !important; visibility: hidden; }
 #app.portrait .actbar .side { display: flex; gap: 8px; flex: 1 1 0; }
 #app.portrait .actbar .side.r { justify-content: flex-end; }
 #app.portrait .actbar .btnx { flex: 0 1 140px; }
-#app.portrait .tutor { position: static; transform: none; width: 100%; max-width: 560px; animation: none; }
+#app.portrait .tutor { position: static; transform: none; width: 100%; max-width: 560px; animation: none; flex: 0 0 auto; }
+#app.portrait .actbar { flex: 0 0 auto; }
+
+/* ---------- phone on its side: the top bar becomes a slim column on the right so the board gets the full height ---------- */
+@media (orientation: landscape) and (max-height: 520px) {
+  #app { flex-direction: row-reverse; }
+  .card { padding: 16px 18px; gap: 14px; width: min(560px, 100%); }
+  .topbar {
+    flex-direction: column; justify-content: flex-start; align-items: center; gap: 8px; min-height: 0; width: 70px;
+    padding-block: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-bottom, 0px));
+    padding-inline: 4px max(6px, env(safe-area-inset-right, 0px));
+  }
+  .topbar .brand, .topbar .matchinfo { display: none; }
+  .topbar .spacer { flex: 1 1 0; }
+  .score { flex-direction: column; border-radius: 16px; padding: 3px; gap: 2px; }
+  .score .side { flex-direction: column; gap: 3px; padding: 6px 8px; border-radius: 13px; }
+  .score .side .nm { display: none; }
+  .score .side:last-child { flex-direction: column-reverse; }
+  .score .len { padding: 2px 0; font-size: 10.5px; }
+  .iconbtn, .iconbtn.labelled { width: 44px; height: 44px; padding: 0; justify-content: center; }
+  .iconbtn.labelled .lt { display: none; }
+  .stage { padding-block: max(4px, env(safe-area-inset-top, 0px)) max(4px, env(safe-area-inset-bottom, 0px)); padding-inline: max(4px, env(safe-area-inset-left, 0px)) 0; }
+}
 
 input.txt { width: 100%; font: inherit; font-weight: 600; background-image: none; padding-right: 12px; cursor: text; }
 input.txt.code { width: 9ch; text-transform: uppercase; letter-spacing: 3px; font-family: var(--font-num); text-align: center; flex: 0 0 auto; }
@@ -542,20 +620,32 @@ const R = (() => {
 
 
 /* ===================== BOARD (SVG) ===================== */
-const G = (() => {
-  const F = 14, FV = 26, RAIL = 54, PW = 64, BAR = 58, TRAY = 66, CD = 58;
-  const FH = 680;
-  const W = F + RAIL + 12 * PW + BAR + TRAY + F;
-  const H = FV * 2 + FH;
-  const FL = F + RAIL;                // field left
-  const XR = FL + 6 * PW + BAR;       // right half start
-  const BARX = FL + 6 * PW + BAR / 2;
-  const TRAYX = XR + 6 * PW + TRAY / 2;
-  const RAILX = F + RAIL / 2;
-  const PL = 5 * CD;                  // point length
-  const MIDY = FV + FH / 2;
-  return { F, FV, RAIL, PW, BAR, TRAY, CD, FH, W, H, FL, XR, BARX, TRAYX, RAILX, PL, MIDY };
-})();
+// Board geometry. SLOTS = how many checkers a point shows before the stack squeezes up:
+// 5 is the classic look; short landscape screens use fewer (bigger checkers), tall screens more.
+const G = { F: 14, FV: 26, RAIL: 54, PW: 64, BAR: 58, TRAY: 66, CD: 58, MID: 100 };
+G.W = G.F + G.RAIL + 12 * G.PW + G.BAR + G.TRAY + G.F;
+G.FL = G.F + G.RAIL;                 // field left
+G.XR = G.FL + 6 * G.PW + G.BAR;      // right half start
+G.BARX = G.FL + 6 * G.PW + G.BAR / 2;
+G.TRAYX = G.XR + 6 * G.PW + G.TRAY / 2;
+G.RAILX = G.F + G.RAIL / 2;
+G.midFor = (n) => n <= 4 ? 82 : 100;   // short boards get a slimmer middle strip
+G.setSlots = function (n) {
+  this.SLOTS = n; this.MID = this.midFor(n);
+  this.PL = n * this.CD;             // point length
+  this.FH = 2 * this.PL + this.MID;
+  this.H = this.FV * 2 + this.FH;
+  this.MIDY = this.FV + this.FH / 2;
+};
+G.heightFor = (n) => G.FV * 2 + 2 * n * G.CD + G.midFor(n);
+G.setSlots(5);
+// Pick the point length that makes the checkers biggest in a w x h box
+G.bestSlots = function (w, h) {
+  const px = (n) => this.CD * Math.min(w / this.W, h / this.heightFor(n));
+  let max = 0; for (let n = 3; n <= 10; n++) max = Math.max(max, px(n));
+  if (px(5) >= 40) { let best = 5; for (let n = 5; n <= 10; n++) if (px(n) >= px(5) * 0.99) best = n; return best; }
+  let best = 3; for (let n = 3; n <= 10; n++) if (px(n) >= max * 0.99) best = n; return best;
+};
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 let ROT = 0; // 90 when the board is drawn rotated for portrait screens
@@ -580,7 +670,7 @@ function geo(flip) {
   const isTop = (i) => i >= 12;
   function stackPos(loc, k, count) {
     if (loc.t === 'pt') {
-      const step = count <= 5 ? G.CD : (G.PL - G.CD) / (count - 1);
+      const step = count <= G.SLOTS ? G.CD : (G.PL - G.CD) / (count - 1);
       const y = isTop(loc.i) ? G.FV + G.CD / 2 + k * step : G.H - G.FV - G.CD / 2 - k * step;
       return { x: ptX(loc.i), y };
     }
@@ -591,7 +681,8 @@ function geo(flip) {
       return { x: mx(G.BARX), y };
     }
     // off tray
-    const y = loc.p === 0 ? G.H - G.FV - 12 - k * 15 : G.FV + 12 + k * 15;
+    const ts = Math.min(15, (G.FH / 2 - 40) / 14);
+    const y = loc.p === 0 ? G.H - G.FV - 12 - k * ts : G.FV + 12 + k * ts;
     return { x: mx(G.TRAYX), y };
   }
   const diceCenter = (p) => ({ x: mx(p === 0 ? G.XR + 3 * G.PW : G.FL + 3 * G.PW), y: G.MIDY });
@@ -726,8 +817,8 @@ function arrowPath(g, fromLoc, toLoc, fromK, toK) {
 // Full static board snapshot as SVG string (review / previews).
 // st: {b:[b0,b1], dice:[d0,d1]|null, diceP, cube, owner, arrows:[{p, pairs, color}] }
 function staticBoardSVG(st, o) {
-  const savedRot = ROT; ROT = 0;
-  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; }
+  const savedRot = ROT, savedSlots = G.SLOTS; ROT = 0; G.setSlots(5);
+  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setSlots(savedSlots); }
 }
 function staticBoardSVG0(st, o) {
   const flip = !!o.flip, humanLight = o.humanLight !== false;
@@ -785,7 +876,7 @@ function arrowsSVG(g, bb, p, pairs, color) {
 
 /* ---------- Interactive board ---------- */
 function createBoard(svg, cb) {
-  let flip = false, humanLight = true, showPips = true, rot = 0;
+  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5;
   let g = geo(false);
   const stacks = new Map(); // locKey -> [ids]
   const where = new Map();  // id -> loc
@@ -861,7 +952,7 @@ function createBoard(svg, cb) {
     let s = '';
     for (const [k, ids] of stacks) {
       if (!k.startsWith('pt') && !k.startsWith('bar')) continue;
-      if (ids.length > (k.startsWith('bar') ? 3 : 5)) {
+      if (ids.length > (k.startsWith('bar') ? 3 : G.SLOTS)) {
         const top = ids[ids.length - 1], pt = posOf.get(top), p = top < 15 ? 0 : 1;
         s += `<text class="cnt" x="${pt.x}" y="${pt.y}" dominant-baseline="central" text-anchor="middle" font-size="18" font-weight="800" fill="${checkerColors(p, humanLight).text}" style="pointer-events:none;font-family:var(--font-num)"${trT(pt.x, pt.y)}>${ids.length}</text>`;
       }
@@ -1278,8 +1369,9 @@ function createBoard(svg, cb) {
 
   build();
   return {
-    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; } build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
+    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; } G.setSlots(slots); build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
     get rot() { return rot; },
+    get slots() { return slots; },
     toScreen(x, y) { const m = root.getScreenCTM(); return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }; },
     setPositions, moveChecker, unmoveChecker, drawDice, rollDice, drawCube, drawButtons, drawStatus, showDests, clearDests, select,
     setInteractive(v) { interactive = v; if (!v) { selFrom = null; clearDests(); } },
@@ -1863,7 +1955,7 @@ const Game = (() => {
   function render(full) {
     const c = cur();
     board.setSpeed(SPEEDS[Settings.speed] || 1);
-    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot() });
+    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots() });
     board.drawCube({ on: M.cubeOn && !game().crawford, value: c.cube.value, owner: c.cube.owner });
     board.drawDice(null);
     board.drawButtons([]);
@@ -2653,7 +2745,7 @@ const Game = (() => {
       const c = cur();
       const sel = { dice: c.dice, phase };
       board.setSpeed(SPEEDS[Settings.speed] || 1);
-      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot() });
+      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots() });
       drawCubeNow(phase === 'preroll' && canDouble(0));
       if (phase === 'moving') drawMoveButtons();
       if (phase === 'preroll') board.drawButtons(prerollButtons(canDouble(0)));
@@ -2693,6 +2785,17 @@ function boardRot() {
   document.getElementById('app').classList.toggle('portrait', isPortrait());
   return 0;
 }
+// How many checkers fit on a point before stacks compress: chosen so the board fills the space
+// (taller on phones held upright, shorter and wider on phones held sideways).
+function boardSlots() {
+  const bx = document.querySelector('.boardbox');
+  if (!bx || typeof G === 'undefined') return 5;
+  const r = bx.getBoundingClientRect();
+  if (!r.width || !r.height) return 5;
+  const portrait = document.getElementById('app').classList.contains('portrait');
+  const h = r.height - (portrait ? 84 : 0);
+  return G.bestSlots(r.width, Math.max(120, h));
+}
 const dotStyle = (p) => `background:${(p === 0) === Settings.humanLight ? '#f2efe9' : '#1a1d21'}`;
 
 const UI = (() => {
@@ -2712,9 +2815,9 @@ const UI = (() => {
     const g = M.games[M.games.length - 1];
     const turn = M.cur ? M.cur.turn : -1;
     const len = M.matchTo ? `${M.matchTo}-pt` : 'Single';
-    sc.innerHTML = `<div class="side${turn === 0 ? ' turn' : ''}"><span class="dot" style="${dotStyle(0)}"></span><span>You</span><span class="pts">${M.score[0]}</span></div>
+    sc.innerHTML = `<div class="side${turn === 0 ? ' turn' : ''}"><span class="dot" style="${dotStyle(0)}"></span><span class="nm">You</span><span class="pts">${M.score[0]}</span></div>
       <span class="len">${len}</span>
-      <div class="side${turn === 1 ? ' turn' : ''}"><span class="pts">${M.score[1]}</span><span>${esc(Game.oppName)}</span><span class="dot" style="${dotStyle(1)}"></span></div>`;
+      <div class="side${turn === 1 ? ' turn' : ''}"><span class="pts">${M.score[1]}</span><span class="nm">${esc(Game.oppName)}</span><span class="dot" style="${dotStyle(1)}"></span></div>`;
     const bits = [];
     bits.push(M.matchTo ? `${M.matchTo}-point match` : 'Single game');
     bits.push(`Game ${g ? g.no : 1}`);
@@ -3127,7 +3230,7 @@ const UI = (() => {
       Game.key(e);
     });
     // initial board behind the setup card
-    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot() });
+    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots() });
     board.drawCube({ on: true, value: 1, owner: -1 });
     update();
     // re-orient the board when the screen shape changes (e.g. phone rotation)
@@ -3139,11 +3242,12 @@ const UI = (() => {
         const r = boardRot();
         const now = document.getElementById('app').classList.contains('portrait');
         renderBar();
-        if (r === lastRot && was === now) return;
+        const sl = boardSlots();
+        if (r === lastRot && was === now && sl === board.slots) return;
         if (Game.busy || (Game.M && ['opening', 'auto', 'botTurn', 'committing'].includes(Game.phase))) { rt = setTimeout(retry, 300); return; }
         lastRot = r;
         if (Game.M) Game.redraw();
-        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r }); board.drawCube({ on: true, value: 1, owner: -1 }); }
+        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r, slots: sl }); board.drawCube({ on: true, value: 1, owner: -1 }); }
       }, 150);
     };
     window.addEventListener('resize', onResize);
@@ -3186,7 +3290,7 @@ const UI = (() => {
 
 /* ===================== REVIEW ===================== */
 const Review = (() => {
-  let M = null, scope = 'all', filt = 'all', who = 'both', sel = null, rows = [], running = false, candSel = null;
+  let M = null, scope = 'all', filt = 'all', who = 'both', sel = null, rows = [], running = false, candSel = null, tab = 'analysis';
   const deep = new Map();
 
   function games() { return scope === 'all' ? M.games : [M.games[scope]].filter(Boolean); }
@@ -3296,9 +3400,11 @@ const Review = (() => {
   function filtersHTML() {
     const c = counts();
     const f = [['all', 'All'], ['good', 'Good'], ['doubtful', 'Doubtful'], ['error', 'Errors'], ['blunder', 'Blunders']];
+    return `<div class="bands" id="fBand" role="group" aria-label="Show">${f.map(([v, l]) => `<button type="button" class="b-${v}" data-v="${v}" aria-pressed="${filt === v}"><span class="l">${l}</span><span class="n">${c[v]}</span></button>`).join('')}</div>`;
+  }
+  function whoHTML() {
     const w = [['both', 'Both'], ['you', 'You'], ['bot', pname(1)]];
-    return `<div class="filters" id="fBand">${f.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${filt === v}">${l} <span class="n">${c[v]}</span></button>`).join('')}</div>
-      <div class="filters" id="fWho">${w.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${who === v}">${l}</button>`).join('')}</div>`;
+    return `<div class="seg sm" id="fWho" role="group" aria-label="Player">${w.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${who === v}">${esc(l)}</button>`).join('')}</div>`;
   }
 
   function listHTML() {
@@ -3319,117 +3425,154 @@ const Review = (() => {
     return s;
   }
 
-  function detailHTML() {
-    if (sel == null || !rows[sel] || rows[sel].sep) return `${navHTML()}<div class="empty">No move selected. Use the arrows or pick a move from the list.</div><!--SPLIT-->`;
-    const { r, g, n } = rows[sel];
-    const flip = Settings.flip, humanLight = Settings.humanLight;
-    const st = { b: r.b, cubeOn: M.cubeOn && !g.crawford, cube: r.ctx.cube, owner: absOwner(r) };
-    const loss = recLoss(r), b = recBand(r);
-    let head = `<div class="dhead"><h3>Game ${g.no} · ${r.k === 'move' ? 'Move' : 'Turn'} ${n}</h3><span class="chip plain"><span class="pd" style="width:10px;height:10px;border-radius:50%;display:inline-block;${dotStyle(r.p)}"></span>${pname(r.p)}${r.k === 'move' ? ' · ' + r.dice.join('-') : ''}</span>
-      ${b ? `<span class="chip ${b}">${BAND_LABEL[b]}</span><span class="chip plain num">${fmtLoss(loss)}</span>` : ''}${r.k === 'move' && r.luck != null ? `<span class="chip plain num" title="Luck of this roll">Luck ${fmtEq(r.luck)}</span>` : ''}</div>`;
-    if (r.k === 'move') {
-      st.dice = r.dice; st.diceP = r.p;
-      const played = recPairs(r);
-      const an = r.an;
-      const dp = deep.get(r);
-      const cands = dp || (an ? an.cands : []);
-      const pIdxOrig = an ? an.played : -1;
-      let bestPairs = cands.length ? cands[0].m : null;
-      if (candSel != null && cands[candSel]) bestPairs = cands[candSel].m;
-      const same = bestPairs && R.key(...(() => { const x = R.simulatePairs(r.b[r.p], r.b[1 - r.p], bestPairs); return [x.me, x.opp]; })()) === R.key(...(() => { const x = R.simulatePairs(r.b[r.p], r.b[1 - r.p], played); return [x.me, x.opp]; })());
-      st.arrows = [{ p: r.p, pairs: played, color: 'amber' }];
-      if (bestPairs && !same) st.arrows.push({ p: r.p, pairs: bestPairs, color: 'green' });
-      const me = r.b[r.p], opp = r.b[1 - r.p];
-      const playedKey = (() => { const x = R.simulatePairs(me, opp, played); return R.key(x.me, x.opp); })();
-      let table = '';
-      if (r.forcedNone) table = `<div class="empty">No legal move with this roll.</div>`;
-      else if (!an && !dp) table = `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
-      else {
-        const top = cands[0] ? cands[0].eq : 0;
-        table = `<table class="ct"><thead><tr><th>#</th><th>Move</th><th class="n">Equity</th><th class="n">Diff</th><th class="n">Win</th><th class="n">W g</th><th class="n">L g</th><th class="n">Depth</th></tr></thead><tbody>
-          ${cands.map((c, i) => {
-            const k = (() => { const x = R.simulatePairs(me, opp, c.m); return R.key(x.me, x.opp); })();
-            const isPlayed = k === playedKey;
-            return `<tr class="${isPlayed ? 'played' : ''} ${i === 0 ? 'best' : ''}" data-c="${i}"><td>${(c.i != null ? c.i : i) + 1}</td><td class="num">${esc(R.notation(me, opp, c.m))}${isPlayed ? ' <span class="chip plain" style="padding:1px 6px;font-size:10.5px">Played</span>' : ''}</td>
-              <td class="n">${fmtEq(c.eq)}</td><td class="n">${i === 0 ? '' : (c.eq - top).toFixed(3)}</td>
-              <td class="n">${(c.pr[0] * 100).toFixed(1)}</td><td class="n">${(c.pr[1] * 100).toFixed(1)}</td><td class="n">${(c.pr[3] * 100).toFixed(1)}</td><td class="n" style="color:var(--muted)">${c.ply >= 0 ? c.ply + '-ply' : ''}</td></tr>`;
-          }).join('')}</tbody></table>
-          <div class="row" style="justify-content:space-between;padding-top:10px"><small style="color:var(--muted)">${dp ? 'Grandmaster (3-ply) check' : (LEVELS.find(l => l.v === (r.alv || 5)) || LEVELS[1]).name + ' analysis'} · ${an ? an.total : '?'} legal moves</small>
-          ${dp || (r.alv || 5) >= 7 ? '' : `<button class="btnx" id="deepBtn" type="button">Deeper check</button>`}</div>`;
+  // board pane: nav strip (prev / what this decision is / next) above the position
+  function boardHTML() {
+    const vis = visible(), k = vis.indexOf(sel);
+    const lbl = filt === 'all' ? 'decisions' : BAND_LABEL[filt].toLowerCase() + (filt === 'good' ? ' moves' : 's');
+    const count = `${vis.length ? (k >= 0 ? k + 1 : '–') + ' of ' + vis.length : 'No'} ${lbl}${who !== 'both' ? ' · ' + (who === 'you' ? 'you' : esc(pname(1))) : ''}`;
+    let l1 = '<span class="muted">Nothing selected</span>', board = '<div class="empty">Nothing to show with these filters.</div>';
+    if (sel != null && rows[sel] && !rows[sel].sep) {
+      const { r, g, n } = rows[sel];
+      const loss = recLoss(r), b = recBand(r);
+      const forced = r.k === 'move' && (r.forced || r.forcedNone || (r.an && r.an.total <= 1));
+      const what = r.k === 'move' ? r.dice.join('-') : r.k === 'cube' ? 'Cube' : 'Take/pass';
+      l1 = `<span class="pd" style="${dotStyle(r.p)}"></span><b>${esc(pname(r.p))}</b><span class="num">${what}</span>
+        ${forced ? '<span class="chip plain">Forced</span>' : b ? `<span class="chip ${b}">${BAND_LABEL[b]}</span>${b === 'good' && loss < 0.0005 ? '' : `<span class="num muted">${fmtLoss(loss)}</span>`}` : '<span class="spin"></span>'}
+        ${r.k === 'move' ? luckTag(r.luck) : ''}`;
+      const st = { b: r.b, cubeOn: M.cubeOn && !g.crawford, cube: r.ctx.cube, owner: absOwner(r) };
+      if (r.k === 'move') {
+        st.dice = r.dice; st.diceP = r.p;
+        const best = bestPairsFor(r);
+        st.arrows = [{ p: r.p, pairs: recPairs(r), color: 'amber' }];
+        if (best && !samePos(r, best, recPairs(r))) st.arrows.push({ p: r.p, pairs: best, color: 'green' });
       }
-      head += `<div class="dhead" style="padding-top:0;gap:14px;font-size:13.5px"><span><span style="color:#e0a033;font-weight:700">Played</span> <span class="num">${esc(r.forcedNone ? '—' : R.notation(me, opp, played))}</span></span>
-        ${bestPairs && cands.length ? `<span><span style="color:var(--good);font-weight:700">${candSel ? 'Selected' : 'Best'}</span> <span class="num">${esc(R.notation(me, opp, bestPairs))}</span></span>` : ''}</div>`;
-      return `${navHTML()}${head}<div class="mini">${staticBoardSVG(st, { flip, humanLight, label: 'Position before the move' })}</div><!--SPLIT-->${table}`;
+      board = staticBoardSVG(st, { flip: Settings.flip, humanLight: Settings.humanLight, label: r.k === 'move' ? 'Position before the move' : 'Position at the cube decision' });
+      return [`<button class="navbtn" id="navPrev" type="button" aria-label="Previous" ${k <= 0 ? 'disabled' : ''}>${ICON.back}</button>
+        <div class="info"><div class="l1">${l1}</div><div class="l2">${count} · Game ${g.no}, ${r.k === 'move' ? 'move' : 'turn'} ${n}</div></div>
+        <button class="navbtn flipx" id="navNext" type="button" aria-label="Next" ${k >= vis.length - 1 ? 'disabled' : ''}>${ICON.back}</button>`,
+        `<div class="mini">${board}</div>`];
     }
-    // cube decision
+    return [`<button class="navbtn" id="navPrev" type="button" aria-label="Previous" disabled>${ICON.back}</button>
+      <div class="info"><div class="l1">${l1}</div><div class="l2">${count}</div></div>
+      <button class="navbtn flipx" id="navNext" type="button" aria-label="Next" ${vis.length ? '' : 'disabled'}>${ICON.back}</button>`, `<div class="mini">${board}</div>`];
+  }
+  function candsFor(r) { return deep.get(r) || (r.an ? r.an.cands : []); }
+  function bestPairsFor(r) { const c = candsFor(r); if (!c.length) return null; return (candSel != null && c[candSel] ? c[candSel] : c[0]).m; }
+  function posKey(r, pairs) { const x = R.simulatePairs(r.b[r.p], r.b[1 - r.p], pairs); return R.key(x.me, x.opp); }
+  function samePos(r, a, b) { return posKey(r, a) === posKey(r, b); }
+
+  // analysis pane: what was played vs best, the candidate list or the cube numbers
+  function analysisHTML() {
+    if (sel == null || !rows[sel] || rows[sel].sep) return `<div class="empty">Pick a decision from Moves, or change the filters at the top.</div>`;
+    const { r } = rows[sel];
+    if (r.k === 'move') {
+      const played = recPairs(r), an = r.an, dp = deep.get(r), cands = candsFor(r);
+      const me = r.b[r.p], opp = r.b[1 - r.p];
+      const best = bestPairsFor(r);
+      let s = `<div class="pb"><div><span class="k amber">Played</span><span class="num">${esc(r.forcedNone ? 'No legal move' : R.notation(me, opp, played))}</span></div>
+        ${best && cands.length && !samePos(r, best, played) ? `<div><span class="k green">${candSel ? 'Selected' : 'Best'}</span><span class="num">${esc(R.notation(me, opp, best))}</span></div>` : best && cands.length ? '<div><span class="k green">Best</span><span class="muted">Same as played</span></div>' : ''}
+        ${r.luck != null ? `<div><span class="k">Roll luck</span><span class="num">${fmtEq(r.luck)}</span></div>` : ''}</div>`;
+      if (r.forcedNone) return s;
+      if (!an && !dp) return s + `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
+      const top = cands[0] ? cands[0].eq : 0;
+      const playedKey = posKey(r, played);
+      s += `<div class="tablewrap"><table class="ct"><thead><tr><th>#</th><th>Move</th><th class="n">Equity</th><th class="n">Diff</th><th class="n">Win</th><th class="n">W g</th><th class="n">L g</th><th class="n">Depth</th></tr></thead><tbody>
+        ${cands.map((c, i) => {
+          const isPlayed = posKey(r, c.m) === playedKey;
+          return `<tr class="${isPlayed ? 'played' : ''} ${i === 0 ? 'best' : ''} ${candSel === i || (candSel == null && i === 0) ? 'sel' : ''}" data-c="${i}"><td>${(c.i != null ? c.i : i) + 1}</td><td class="num">${esc(R.notation(me, opp, c.m))}${isPlayed ? ' <span class="chip plain tiny">Played</span>' : ''}</td>
+            <td class="n">${fmtEq(c.eq)}</td><td class="n">${i === 0 ? '' : (c.eq - top).toFixed(3)}</td>
+            <td class="n">${(c.pr[0] * 100).toFixed(1)}</td><td class="n">${(c.pr[1] * 100).toFixed(1)}</td><td class="n">${(c.pr[3] * 100).toFixed(1)}</td><td class="n muted">${c.ply >= 0 ? c.ply + '-ply' : ''}</td></tr>`;
+        }).join('')}</tbody></table></div>
+        <div class="row" style="justify-content:space-between;padding:10px 4px 4px"><small class="muted">Tap a move to see it on the board · ${dp ? 'Grandmaster (3-ply) check' : (LEVELS.find(l => l.v === (r.alv || 5)) || LEVELS[1]).name + ' analysis'} · ${an ? an.total : '?'} legal moves</small>
+        ${dp || (r.alv || 5) >= 7 ? '' : `<button class="btnx" id="deepBtn" type="button">Deeper check</button>`}</div>`;
+      return s;
+    }
     const a = r.an;
-    const doubler = r.doubler;
-    let body = `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
-    if (a) {
-      const dbl = Math.min(a.dt, a.dp);
-      const proper = (() => { if (dbl <= a.nd) return a.dt > a.dp && a.dp > a.nd ? 'Too good to double, pass' : (a.dt <= a.dp ? 'No double, take' : 'No double'); return a.dt <= a.dp ? 'Double, take' : 'Double, pass'; })();
-      const mine = r.k === 'cube' ? (r.action === 'double' ? 'Double' : 'No double') : (r.action === 'take' ? 'Take' : 'Pass');
-      const bestRow = dbl > a.nd ? (a.dt <= a.dp ? 'dt' : 'dp') : 'nd';
-      body = `<div class="cubegrid">
-        <span class="${bestRow === 'nd' ? 'best' : ''}">No double</span><span class="n">${fmtEq(a.nd)}</span>
-        <span class="${bestRow === 'dt' ? 'best' : ''}">Double, take</span><span class="n">${fmtEq(a.dt)}</span>
-        <span class="${bestRow === 'dp' ? 'best' : ''}">Double, pass</span><span class="n">${fmtEq(a.dp)}</span>
-        <span style="color:var(--muted)">Proper action</span><span><b>${proper}</b></span>
-        <span style="color:var(--muted)">${pname(r.p)} chose</span><span><b>${mine}</b>${r.tutorSwitched ? ' <small style="color:var(--muted)">(changed after tutor)</small>' : ''}</span>
-        <span style="color:var(--muted)">Equity lost</span><span class="n">${fmtLoss(r.loss)}</span>
-        <span style="color:var(--muted)">Doubler wins</span><span class="n">${(a.pr[0] * 100).toFixed(1)}% · gammons ${(a.pr[1] * 100).toFixed(1)}%</span>
-        <span style="color:var(--muted)">Doubler loses gammon</span><span class="n">${(a.pr[3] * 100).toFixed(1)}%</span>
-      </div><small style="color:var(--muted);padding:0 4px 12px;display:block">Equities are from ${doubler === 0 ? 'your' : pname(1) + '’s'} side as the player who could double, in normalised money-game units.</small>`;
-    }
-    return `${navHTML()}${head}<div class="mini">${staticBoardSVG(st, { flip, humanLight, label: 'Position at the cube decision' })}</div><!--SPLIT-->${body}`;
+    if (!a) return `<div class="loading" style="padding:12px"><span class="spin"></span>Analysing…</div>`;
+    const dbl = Math.min(a.dt, a.dp);
+    const proper = (() => { if (dbl <= a.nd) return a.dt > a.dp && a.dp > a.nd ? 'Too good to double, pass' : (a.dt <= a.dp ? 'No double, take' : 'No double'); return a.dt <= a.dp ? 'Double, take' : 'Double, pass'; })();
+    const mine = r.k === 'cube' ? (r.action === 'double' ? 'Double' : 'No double') : (r.action === 'take' ? 'Take' : 'Pass');
+    const bestRow = dbl > a.nd ? (a.dt <= a.dp ? 'dt' : 'dp') : 'nd';
+    return `<div class="cubegrid">
+      <span class="muted">${esc(pname(r.p))} chose</span><span><b>${mine}</b>${r.tutorSwitched ? ' <small class="muted">(changed after tutor)</small>' : ''}</span>
+      <span class="muted">Proper action</span><span><b>${proper}</b></span>
+      <span class="muted">Equity lost</span><span class="n">${fmtLoss(r.loss)}</span>
+      <span class="hr2"></span><span class="hr2"></span>
+      <span class="${bestRow === 'nd' ? 'best' : ''}">No double</span><span class="n">${fmtEq(a.nd)}</span>
+      <span class="${bestRow === 'dt' ? 'best' : ''}">Double, take</span><span class="n">${fmtEq(a.dt)}</span>
+      <span class="${bestRow === 'dp' ? 'best' : ''}">Double, pass</span><span class="n">${fmtEq(a.dp)}</span>
+      <span class="muted">Doubler wins</span><span class="n">${(a.pr[0] * 100).toFixed(1)}% · gammons ${(a.pr[1] * 100).toFixed(1)}%</span>
+      <span class="muted">Doubler loses gammon</span><span class="n">${(a.pr[3] * 100).toFixed(1)}%</span>
+    </div><small class="muted" style="padding:0 4px 8px;display:block">Equities are from ${r.doubler === 0 ? 'your' : esc(pname(1)) + '’s'} side as the player who could double, in normalised money-game units.</small>`;
   }
 
   function visible() { return rows.map((row, i) => (!row.sep && passes(row)) ? i : -1).filter(i => i >= 0); }
-  function navHTML() {
-    const vis = visible(), k = vis.indexOf(sel);
-    const lbl = filt === 'all' ? 'decisions' : BAND_LABEL[filt].toLowerCase() + (filt === 'good' ? ' moves' : 's');
-    return `<div class="rvnav"><button class="iconbtn" id="navPrev" aria-label="Previous" ${k <= 0 ? 'disabled' : ''}>${ICON.back}</button>
-      <span class="num">${vis.length ? (k >= 0 ? k + 1 : '–') + ' of ' + vis.length : 'None'} <small>${lbl}${who !== 'both' ? ' · ' + (who === 'you' ? 'you' : pname(1)) : ''}</small></span>
-      <button class="iconbtn flipx" id="navNext" aria-label="Next" ${k >= vis.length - 1 ? 'disabled' : ''}>${ICON.back}</button></div>`;
-  }
   function ensureSel() {
     const vis = visible();
     if (!vis.includes(sel)) sel = vis.length ? vis[0] : null;
     candSel = null;
   }
+  const TABS = [['moves', 'Moves'], ['analysis', 'Analysis'], ['stats', 'Stats']];
   function render(keepScroll) {
     const el = $('#review');
-    const list = el.querySelector('.movelist');
-    const st = list ? list.scrollTop : 0;
-    const scopes = [['all', M.matchTo ? 'Match' : 'Game']].concat(M.matchTo ? M.games.map((g, i) => [String(i), `Game ${g.no}`]) : []);
-    el.innerHTML = `<div class="rv-top">
-        <button class="iconbtn" id="rvBack" aria-label="Back to the board">${ICON.back}</button>
+    const keep = {};
+    if (keepScroll) for (const id of ['rvMoves', 'rvAnalysis', 'rvStats']) { const x = $('#' + id); if (x) keep[id] = x.scrollTop; }
+    const scopes = [['all', M.matchTo ? 'Whole match' : 'Game']].concat(M.matchTo ? M.games.map((g, i) => [String(i), `Game ${g.no}`]) : []);
+    el.dataset.tab = tab;
+    el.innerHTML = `<header class="rvh">
+        <button class="iconbtn" id="rvBack" type="button" aria-label="Back to the board">${ICON.back}</button>
         <h1>Review</h1>
-        <div class="seg" id="rvScope" style="flex:0 1 auto;min-width:0;overflow-x:auto;flex-wrap:nowrap">${scopes.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${String(scope) === v}">${l}</button>`).join('')}</div>
-        <div class="spacer"></div><span id="rvProg"></span></div>
+        ${scopes.length > 1 ? `<select class="sel sm" id="rvScope" aria-label="Which games">${scopes.map(([v, l]) => `<option value="${v}" ${String(scope) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}
+        <span id="rvProg"></span>
+        <div class="spacer"></div>
+        ${whoHTML()}
+        ${filtersHTML()}
+      </header>
       <div class="rv-body">
-        <div class="panel detail" id="rvBoard"></div>
-        <div class="panel cands" id="rvCands"></div>
-        <div class="rv-side">${filtersHTML()}<div class="panel movelist" role="list">${listHTML()}</div>${statsHTML()}</div>
+        <div class="rvnav panel" id="rvNav"></div>
+        <section class="rvboard panel" id="rvBoard"></section>
+        <div class="tabs" role="tablist">${TABS.map(([v, l]) => `<button type="button" role="tab" data-t="${v}" aria-selected="${tab === v}">${l}</button>`).join('')}</div>
+        <section class="pane panel" id="rvMoves"><div class="movelist" role="list">${listHTML()}</div></section>
+        <section class="pane panel" id="rvAnalysis">${analysisHTML()}</section>
+        <section class="pane panel" id="rvStats">${statsHTML()}</section>
       </div>`;
-    fillDetail();
-    if (keepScroll) el.querySelector('.movelist').scrollTop = st;
+    fillBoard();
+    for (const id in keep) $('#' + id).scrollTop = keep[id];
     wire();
+    fit();
+    if (!keepScroll) showSel();
     progress();
   }
-  function fillDetail() {
-    const [top, bottom] = detailHTML().split('<!--SPLIT-->');
-    $('#rvBoard').innerHTML = top;
-    $('#rvCands').innerHTML = bottom || '';
-    $('#rvCands').hidden = !bottom;
+  // in side-by-side layouts the board column is exactly as wide as the board at full height
+  function fit() {
+    const body = $('#review .rv-body'), b = $('#rvBoard');
+    if (!body || !b) return;
+    const h = b.clientHeight - 12;
+    body.style.setProperty('--bw', Math.max(220, Math.round(h * 974 / 732) + 12) + 'px');
   }
-  function renderDetail() { fillDetail(); wireDetail(); }
+  function showSel() {
+    const b = $(`#review .mrow[data-i="${sel}"]`); if (b) b.scrollIntoView({ block: 'nearest' });
+  }
+  function fillBoard() { const [nav, bd] = boardHTML(); $('#rvNav').innerHTML = nav; $('#rvBoard').innerHTML = bd; }
+  function renderDetail() {
+    fillBoard();
+    $('#rvAnalysis').innerHTML = analysisHTML();
+    $('#review').querySelectorAll('.mrow').forEach(b => b.setAttribute('aria-current', String(+b.dataset.i === sel)));
+    wireDetail();
+  }
+  function setTab(t) {
+    tab = t; $('#review').dataset.tab = t;
+    $('#review').querySelectorAll('.tabs [data-t]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.t === t)));
+    if (t === 'moves') showSel();
+  }
   function wire() {
     const el = $('#review');
     $('#rvBack').onclick = close;
-    $('#rvScope').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; scope = b.dataset.v === 'all' ? 'all' : +b.dataset.v; sel = null; candSel = null; buildRows(); render(); };
+    const sc = $('#rvScope');
+    if (sc) sc.onchange = () => { scope = sc.value === 'all' ? 'all' : +sc.value; sel = null; candSel = null; buildRows(); ensureSel(); render(); };
     $('#fBand').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; filt = b.dataset.v; ensureSel(); render(); };
     $('#fWho').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; who = b.dataset.v; ensureSel(); render(); };
+    el.querySelector('.tabs').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) setTab(b.dataset.t); };
     el.querySelector('.movelist').onclick = (e) => { const b = e.target.closest('.mrow'); if (!b) return; select(+b.dataset.i); };
     wireDetail();
   }
@@ -3445,33 +3588,27 @@ const Review = (() => {
       db.disabled = true; db.innerHTML = '<span class="spin"></span>Checking…';
       try {
         const res = await Engine.call('moves', r.b[1 - r.p], r.b[r.p], r.dice[0], r.dice[1], r.ctx, 7, R.toGnubg(r.subs));
-        if (false) return;
         deep.set(r, res.moves.slice(0, 10).map((m, i) => ({ m: m.move, eq: m.eq, pr: m.probs, ply: m.ply, i })));
       } catch (e) { UI.toast('Deeper check failed'); }
       candSel = null;
       if (rows[sel] && rows[sel].r === r) renderDetail();
     };
   }
-  function select(i) {
-    sel = i; candSel = null;
-    const el = $('#review');
-    el.querySelectorAll('.mrow').forEach(b => b.setAttribute('aria-current', String(+b.dataset.i === i)));
-    renderDetail();
-  }
+  function select(i) { sel = i; candSel = null; renderDetail(); }
   function move(delta) {
-    const vis = rows.map((row, i) => (!row.sep && passes(row)) ? i : -1).filter(i => i >= 0);
+    const vis = visible();
     if (!vis.length) return;
     let k = vis.indexOf(sel);
     k = k < 0 ? 0 : Math.max(0, Math.min(vis.length - 1, k + delta));
     select(vis[k]);
-    const b = $(`#review .mrow[data-i="${vis[k]}"]`); b && b.scrollIntoView({ block: 'nearest' });
+    showSel();
   }
   function progress() {
     const missing = [];
     for (const g of M.games) for (const r of g.recs) if ((r.k === 'move' && (!r.an || r.luck == null)) || ((r.k === 'cube' || r.k === 'take') && !r.an)) missing.push(r);
     const pe = $('#rvProg');
     if (!missing.length) { if (pe) pe.innerHTML = ''; return; }
-    if (pe) pe.innerHTML = `<span class="loading"><span class="spin"></span>Analysing ${missing.length} decision${missing.length > 1 ? 's' : ''}…</span>`;
+    if (pe) pe.innerHTML = `<span class="loading" title="Analysing ${missing.length} decision${missing.length > 1 ? 's' : ''}"><span class="spin"></span><span class="num">${missing.length}</span><span class="lt">left</span></span>`;
     if (running) return;
     running = true;
     (async () => {
@@ -3480,7 +3617,7 @@ const Review = (() => {
         await Game.ensureAnalysis(r);
         k++;
         if (!$('#review') || $('#review').hidden) break;
-        if (k % 6 === 0 || k === missing.length) { render(true); if (sel != null) renderDetail(); }
+        if (k % 6 === 0 || k === missing.length) render(true);
       }
       running = false;
       if (!$('#review').hidden) render(true);
@@ -3496,6 +3633,7 @@ const Review = (() => {
     if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'k') { e.preventDefault(); move(-1); }
   }
   document.addEventListener('keydown', onKey);
+  let ro = null;
 
   function open(match, sc, fromGame) {
     M = match;
@@ -3509,8 +3647,10 @@ const Review = (() => {
     if (first < 0) first = find(['doubtful']);
     if (first < 0) first = rows.findIndex(row => !row.sep);
     sel = first >= 0 ? first : null;
+    tab = 'analysis';
     $('#review').hidden = false;
     render();
+    if (!ro && window.ResizeObserver) { ro = new ResizeObserver(() => fit()); ro.observe($('#review')); }
   }
   function close() { $('#review').hidden = true; $('#review').innerHTML = ''; }
   return { open, close };
