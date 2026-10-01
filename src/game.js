@@ -778,7 +778,7 @@ const Game = (() => {
     return {
       status: (k) => {
         if (k === 'gone') { ui.toast && ui.toast(`${oppName()} disconnected. Waiting for them to come back`); board.drawStatus(1, `Waiting for ${oppName()}`); }
-        if (k === 'back') { ui.toast && ui.toast(`${oppName()} is back`); if (phase !== 'remote' && phase !== 'cubeOffer') board.drawStatus(1, ''); }
+        if (k === 'back') { ui.toast && ui.toast(`${oppName()} is back`); board.drawStatus(1, ''); }
         ui.update && ui.update();
       }
     };

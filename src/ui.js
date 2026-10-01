@@ -132,7 +132,7 @@ const UI = (() => {
       const fr = (st.opp || 'bot') === 'friend';
       card.querySelectorAll('.botonly').forEach(e => e.hidden = fr);
       card.querySelectorAll('.friendonly').forEach(e => e.hidden = !fr);
-      if (fr) Net.available().then(r => { const n = $('#fNote'); if (n && !r) n.innerHTML = '<b>Not available in this view.</b> To play a friend, both of you need to be signed in to Claude, and they need to be invited to this page by email from its Share menu. A public link alone won’t connect.'; });
+      if (fr) Net.available().then(r => { const n = $('#fNote'); if (n && !r) n.innerHTML = Net.kind === 'room' ? '<b>Not available in this view.</b> Inside Claude, friend play needs both of you signed in and invited to this page. The GitHub version works with just the link.' : '<b>Can’t reach the friend-play server.</b> Check your internet connection and try again.'; });
     };
     wireSeg(card, 'sOpp', (v) => { st.opp = v; Store.set('setup', st); showOpp(); });
     showOpp();
@@ -199,7 +199,13 @@ const UI = (() => {
           toast(`Playing ${Net.oppName}`);
         }
       });
-    } catch (e) { closeCard(); toast('Couldn’t connect here'); showSetup(); return; }
+    } catch (e) {
+      if (started) return;
+      const sub = document.querySelector('#scrim .sub'), ld = document.querySelector('#scrim .loading');
+      if (ld) ld.remove();
+      if (sub) sub.textContent = e.message === 'nogame' ? 'No game with that code. Check the code with your friend.' : e.message === 'full' ? 'That game already has two players.' : 'Couldn’t connect. Check your internet connection and try again.';
+      return;
+    }
     setTimeout(() => { if (!started && $('#jCancel')) { const sub = document.querySelector('#scrim .sub'); if (sub) sub.textContent = 'No game with that code yet. Check the code, or ask your friend to keep their game open.'; } }, 8000);
   }
 

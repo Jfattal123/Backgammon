@@ -1297,7 +1297,7 @@ function createBoard(svg, cb) {
    few actions they made (numbered); the other side applies any it hasn't seen.
    Each side rolls its own dice. Nothing is stored on a server: both players keep
    the match in their own browser and re-publish on reconnect. */
-const Net = (() => {
+const RoomNet = (() => {
   let room = null, gr = null, unsub = null;
   let st = null;            // persisted net state (lives in M.net)
   let queue = [], waiters = [];
@@ -1361,9 +1361,167 @@ const Net = (() => {
     async leave() { try { if (unsub) unsub(); if (gr) await gr.leave(); } catch (e) { } gr = null; st = null; queue = []; waiters = []; },
     get state() { return st; },
     get connected() { return !!oppPeer; },
+    get oppName() { return (st && st.oppName) || 'Friend'; },
+    kind: 'room'
+  };
+})();
+
+/* ---------- Firebase transport (used everywhere except inside claude.ai) ----------
+   games/<CODE> = { cfg, created, host: {uid, name, online, log: {1: action, 2: ...}}, guest: {...} }
+   Each player signs in anonymously; database rules only let a player write their own side. */
+const FB_CONFIG = {
+  apiKey: 'AIzaSyCtgG6XwUBsdahptNGjk4EEjZoN3GLQBWw',
+  authDomain: 'backgammon-9ef1f.firebaseapp.com',
+  databaseURL: 'https://backgammon-9ef1f-default-rtdb.europe-west1.firebasedatabase.app',
+  projectId: 'backgammon-9ef1f',
+  storageBucket: 'backgammon-9ef1f.firebasestorage.app',
+  messagingSenderId: '1070142091943',
+  appId: '1:1070142091943:web:92d1f694467f70514e6182'
+};
+const FbNet = (() => {
+  let db = null, uid = null, st = null, hooks = {};
+  let queue = [], waiters = [], queued = 0, oppSeen = false, oppOnline = false, offs = [];
+  const buf = new Map();
+  const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const genCode = () => { const a = new Uint8Array(5); crypto.getRandomValues(a); return [...a].map(x => ALPHA[x % ALPHA.length]).join(''); };
+  const loadScript = (src) => new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(el); });
+  async function load(name) {
+    try { await loadScript('vendor/' + name); } catch (e) { await loadScript('https://cdn.jsdelivr.net/npm/firebase@10.12.2/' + name); }
+  }
+  let initP = null;
+  function init() {
+    if (initP) return initP;
+    initP = (async () => {
+      if (!window.firebase || !window.firebase.database) {
+        if (!window.firebase) await load('firebase-app-compat.js');
+        await load('firebase-auth-compat.js');
+        await load('firebase-database-compat.js');
+      }
+      if (!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
+      const auth = firebase.auth();
+      if (!auth.currentUser) {
+        await new Promise(res => { const u = auth.onAuthStateChanged(() => { u(); res(); }); });
+        if (!auth.currentUser) await auth.signInAnonymously();
+      }
+      uid = auth.currentUser.uid;
+      db = firebase.database();
+      return db;
+    })();
+    initP.catch(() => { initP = null; });
+    return initP;
+  }
+  const ref = (p) => db.ref('games/' + st.code + (p ? '/' + p : ''));
+  const other = () => st.role === 'host' ? 'guest' : 'host';
+  function deliver() { while (waiters.length && queue.length) waiters.shift()(queue.shift()); }
+  function watchOnline() {
+    const mine = ref(st.role + '/online');
+    const cref = db.ref('.info/connected');
+    const h = cref.on('value', s => { if (s.val() && st) { mine.onDisconnect().set(false); mine.set(true); } });
+    offs.push(() => cref.off('value', h));
+  }
+  function watch() {
+    const nref = ref(other() + '/name');
+    const h1 = nref.on('value', s => {
+      const n = s.val();
+      if (!n) return;
+      st.oppName = String(n).slice(0, 24);
+      if (!oppSeen) { oppSeen = true; hooks.found && hooks.found({ name: st.oppName, cfg: st.cfg }); }
+      hooks.status && hooks.status('name');
+    });
+    const oref = ref(other() + '/online');
+    const h2 = oref.on('value', s => {
+      const on = !!s.val();
+      if (on === oppOnline) return;
+      oppOnline = on;
+      if (oppSeen) hooks.status && hooks.status(on ? 'back' : 'gone');
+    });
+    const lref = ref(other() + '/log');
+    const h3 = lref.on('child_added', s => {
+      const a = s.val();
+      if (!a || typeof a.s !== 'number' || a.s <= queued) return;
+      buf.set(a.s, a);
+      while (buf.has(queued + 1)) { queue.push(buf.get(queued + 1)); buf.delete(queued + 1); queued++; }
+      deliver();
+    });
+    offs.push(() => nref.off('value', h1), () => oref.off('value', h2), () => lref.off('child_added', h3));
+  }
+  function reset(state, h) {
+    offs.forEach(f => { try { f(); } catch (e) { } }); offs = [];
+    st = state; hooks = h || {}; queue = []; waiters = []; buf.clear(); queued = st.inSeq || 0; oppSeen = false; oppOnline = false;
+  }
+  return {
+    kind: 'firebase',
+    genCode,
+    async available() { try { await init(); return true; } catch (e) { console.warn('friend play unavailable', e); return null; } },
+    async host(cfg, name, h) {
+      await init();
+      let code;
+      for (let i = 0; i < 5; i++) {
+        code = genCode();
+        const r = await db.ref('games/' + code + '/created').once('value');
+        if (!r.exists()) break;
+      }
+      reset({ code, role: 'host', name, cfg, out: [], inSeq: 0, oppName: '', uid }, h);
+      await ref().set({ cfg, created: firebase.database.ServerValue.TIMESTAMP, host: { uid, name, online: true } });
+      watchOnline(); watch();
+      return st;
+    },
+    async join(code, name, h) {
+      await init();
+      code = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const snap = await db.ref('games/' + code).once('value');
+      const v = snap.val();
+      if (!v || !v.host) throw new Error('nogame');
+      if (v.guest && v.guest.uid && v.guest.uid !== uid) throw new Error('full');
+      reset({ code, role: 'guest', name, cfg: v.cfg, out: [], inSeq: 0, oppName: String(v.host.name || 'Friend').slice(0, 24), uid }, h);
+      await ref('guest').update({ uid, name, online: true });
+      watchOnline(); watch();
+      return st;
+    },
+    async resume(state, h) {
+      await init();
+      reset(state, h);
+      oppSeen = true;
+      watchOnline(); watch();
+      return st;
+    },
+    setHooks(h) { hooks = Object.assign(hooks, h); },
+    send(action) {
+      if (!st) return;
+      action.s = st.out.length + 1;
+      st.out.push(action);
+      ref(st.role + '/log/' + action.s).set(action).catch(e => console.warn('send failed', e));
+    },
+    next() { return new Promise(res => { waiters.push(res); deliver(); }).then(a => { st.inSeq = a.s; return a; }); },
+    async leave() {
+      try { if (st && db) await ref(st.role + '/online').set(false); } catch (e) { }
+      offs.forEach(f => { try { f(); } catch (e) { } }); offs = [];
+      st = null; queue = []; waiters = [];
+    },
+    get state() { return st; },
+    get connected() { return oppOnline; },
     get oppName() { return (st && st.oppName) || 'Friend'; }
   };
 })();
+
+// Inside claude.ai the page's live room is used; everywhere else (GitHub Pages, offline copy) Firebase.
+const inClaude = () => !!(window.claude && window.claude.use);
+const Net = {
+  get impl() { return inClaude() ? RoomNet : FbNet; },
+  get kind() { return this.impl.kind; },
+  available() { return this.impl.available(); },
+  genCode() { return this.impl.genCode(); },
+  host(c, n, h) { return this.impl.host(c, n, h); },
+  join(c, n, h) { return this.impl.join(c, n, h); },
+  resume(s, h) { return this.impl.resume(s, h); },
+  setHooks(h) { return this.impl.setHooks(h); },
+  send(a) { return this.impl.send(a); },
+  next() { return this.impl.next(); },
+  leave() { return this.impl.leave(); },
+  get state() { return this.impl.state; },
+  get connected() { return this.impl.connected; },
+  get oppName() { return this.impl.oppName; }
+};
 
 /* ===================== ENGINE CLIENT ===================== */
 const Engine = (() => {
@@ -2145,7 +2303,7 @@ const Game = (() => {
     return {
       status: (k) => {
         if (k === 'gone') { ui.toast && ui.toast(`${oppName()} disconnected. Waiting for them to come back`); board.drawStatus(1, `Waiting for ${oppName()}`); }
-        if (k === 'back') { ui.toast && ui.toast(`${oppName()} is back`); if (phase !== 'remote' && phase !== 'cubeOffer') board.drawStatus(1, ''); }
+        if (k === 'back') { ui.toast && ui.toast(`${oppName()} is back`); board.drawStatus(1, ''); }
         ui.update && ui.update();
       }
     };
@@ -2558,7 +2716,7 @@ const UI = (() => {
       const fr = (st.opp || 'bot') === 'friend';
       card.querySelectorAll('.botonly').forEach(e => e.hidden = fr);
       card.querySelectorAll('.friendonly').forEach(e => e.hidden = !fr);
-      if (fr) Net.available().then(r => { const n = $('#fNote'); if (n && !r) n.innerHTML = '<b>Not available in this view.</b> To play a friend, both of you need to be signed in to Claude, and they need to be invited to this page by email from its Share menu. A public link alone won’t connect.'; });
+      if (fr) Net.available().then(r => { const n = $('#fNote'); if (n && !r) n.innerHTML = Net.kind === 'room' ? '<b>Not available in this view.</b> Inside Claude, friend play needs both of you signed in and invited to this page. The GitHub version works with just the link.' : '<b>Can’t reach the friend-play server.</b> Check your internet connection and try again.'; });
     };
     wireSeg(card, 'sOpp', (v) => { st.opp = v; Store.set('setup', st); showOpp(); });
     showOpp();
@@ -2625,7 +2783,13 @@ const UI = (() => {
           toast(`Playing ${Net.oppName}`);
         }
       });
-    } catch (e) { closeCard(); toast('Couldn’t connect here'); showSetup(); return; }
+    } catch (e) {
+      if (started) return;
+      const sub = document.querySelector('#scrim .sub'), ld = document.querySelector('#scrim .loading');
+      if (ld) ld.remove();
+      if (sub) sub.textContent = e.message === 'nogame' ? 'No game with that code. Check the code with your friend.' : e.message === 'full' ? 'That game already has two players.' : 'Couldn’t connect. Check your internet connection and try again.';
+      return;
+    }
     setTimeout(() => { if (!started && $('#jCancel')) { const sub = document.querySelector('#scrim .sub'); if (sub) sub.textContent = 'No game with that code yet. Check the code, or ask your friend to keep their game open.'; } }, 8000);
   }
 
