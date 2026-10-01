@@ -117,6 +117,7 @@ const FbNet = (() => {
     return initP;
   }
   const ref = (p) => db.ref('games/' + st.code + (p ? '/' + p : ''));
+  const within = (pr, ms) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout: no answer from ' + FB_CONFIG.databaseURL)), ms))]);
   const other = () => st.role === 'host' ? 'guest' : 'host';
   function deliver() { while (waiters.length && queue.length) waiters.shift()(queue.shift()); }
   function watchOnline() {
@@ -164,18 +165,18 @@ const FbNet = (() => {
       let code;
       for (let i = 0; i < 5; i++) {
         code = genCode();
-        const r = await db.ref('games/' + code + '/created').once('value');
+        const r = await within(db.ref('games/' + code + '/created').once('value'), 12000);
         if (!r.exists()) break;
       }
       reset({ code, role: 'host', name, cfg, out: [], inSeq: 0, oppName: '', uid }, h);
-      await ref().set({ cfg, created: firebase.database.ServerValue.TIMESTAMP, host: { uid, name, online: true } });
+      await within(ref().set({ cfg, created: firebase.database.ServerValue.TIMESTAMP, host: { uid, name, online: true } }), 12000);
       watchOnline(); watch();
       return st;
     },
     async join(code, name, h) {
       await init();
       code = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const snap = await db.ref('games/' + code).once('value');
+      const snap = await within(db.ref('games/' + code).once('value'), 12000);
       const v = snap.val();
       if (!v || !v.host) throw new Error('nogame');
       if (v.guest && v.guest.uid && v.guest.uid !== uid) throw new Error('full');

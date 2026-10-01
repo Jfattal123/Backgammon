@@ -161,6 +161,18 @@ const UI = (() => {
     if (!Engine.info) Engine.ready.then(() => { const e = $('#engLine'); if (e) e.innerHTML = engineLine(); }).catch(err => { const e = $('#engLine'); if (e) e.innerHTML = `<span class="chip blunder">Engine failed to load</span>`; });
   }
   /* ---------- friend games ---------- */
+  // Plain-English reason for a friend-play failure, with the technical code for diagnosis
+  function friendError(e) {
+    const code = (e && (e.code || e.message)) || String(e);
+    let why = 'Something went wrong connecting to the friend-play server.';
+    if (/operation-not-allowed|admin-restricted/.test(code)) why = 'Anonymous sign-in isn’t switched on in Firebase (Authentication → Sign-in method → Anonymous).';
+    else if (/permission.denied|PERMISSION_DENIED/i.test(code)) why = 'The database refused access. Check the Realtime Database rules were published.';
+    else if (/load /.test(code)) why = 'Couldn’t load the friend-play code. Check your internet connection.';
+    else if (/network/i.test(code)) why = 'No connection to the friend-play server. Check your internet connection.';
+    else if (/timeout/i.test(code)) why = 'The database didn’t answer. It may not have been created yet, or its address is different.';
+    else if (/unavailable/.test(code)) why = 'Friend play isn’t available in this view.';
+    return why + ' (Details: ' + String(code).slice(0, 160) + ')';
+  }
   async function hostFriend(cfg, name) {
     if (Game.M && Game.M.opp === 'friend') await Net.leave();
     const desc = `${cfg.matchTo ? cfg.matchTo + '-point match' : 'Single game'} · ${cfg.cubeOn ? 'with cube' : 'no cube'}${cfg.jacoby ? ' · Jacoby' : ''}`;
@@ -175,7 +187,13 @@ const UI = (() => {
           toast(`${Net.oppName} joined`);
         }
       });
-    } catch (e) { toast('Couldn’t open a game room here'); return; }
+    } catch (e) {
+      console.warn('host failed', e);
+      openCard(`<h2>Couldn’t create the game</h2><p class="sub">${esc(friendError(e))}</p>
+        <div class="row" style="justify-content:flex-end"><button class="btnx primary" id="feOk">OK</button></div>`);
+      $('#feOk').onclick = () => { closeCard(); showSetup(); };
+      return;
+    }
     const s = openCard(`<h2>Your game code</h2><p class="sub">${esc(desc)}. Send this code to your friend; the match starts as soon as they join.</p>
       <div class="codebig num" id="codeBig">${st.code}</div>
       <div class="row" style="justify-content:space-between"><span class="loading"><span class="spin"></span>Waiting for your friend…</span>
@@ -203,7 +221,7 @@ const UI = (() => {
       if (started) return;
       const sub = document.querySelector('#scrim .sub'), ld = document.querySelector('#scrim .loading');
       if (ld) ld.remove();
-      if (sub) sub.textContent = e.message === 'nogame' ? 'No game with that code. Check the code with your friend.' : e.message === 'full' ? 'That game already has two players.' : 'Couldn’t connect. Check your internet connection and try again.';
+      if (sub) sub.textContent = e.message === 'nogame' ? 'No game with that code. Check the code with your friend.' : e.message === 'full' ? 'That game already has two players.' : friendError(e);
       return;
     }
     setTimeout(() => { if (!started && $('#jCancel')) { const sub = document.querySelector('#scrim .sub'); if (sub) sub.textContent = 'No game with that code yet. Check the code, or ask your friend to keep their game open.'; } }, 8000);
