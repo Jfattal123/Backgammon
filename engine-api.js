@@ -58,6 +58,22 @@ function makeEngineAPI(M) {
       const f = HF();
       return { luck: f[fBuf], actual: f[fBuf + 1], mean: f[fBuf + 2] };
     },
+    // score given moves (arrays of gnubg pairs) at `plies` with `level`'s settings
+    scoreList(opp, me, list, plies, ctx, level) {
+      setBoard(opp, me);
+      const a = args(ctx);
+      const mb = M._bg_moves_buf() >> 2, h = H32();
+      const n = Math.min(64, list.length);
+      for (let i = 0; i < n; i++) for (let k = 0; k < 8; k++) h[mb + 8 * i + k] = list[i][k] == null ? -1 : list[i][k];
+      const c = M._bg_score_list(n, plies, ...a, level);
+      const f = HF(), out = [];
+      for (let i = 0; i < c; i++) {
+        const o = fBuf + 16 * i;
+        out.push({ eq: f[o], eq2: f[o + 1], probs: [f[o + 2], f[o + 3], f[o + 4], f[o + 5], f[o + 6], f[o + 7]], ply: f[o + 8] });
+      }
+      return out;
+    },
+    setCache(bits) { return M._bg_set_cache ? M._bg_set_cache(bits) : -1; },
     pointsEq(points, ctx) { return M._bg_points_eq(points, ...args(ctx)); },
     eq2mwc(eq, ctx) { const a = args(ctx); return M._bg_eq2mwc(eq, a[0], a[1], a[2], a[3], a[4], a[5]); }
   };

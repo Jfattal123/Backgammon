@@ -1,32 +1,115 @@
 /* ===================== ENGINE CLIENT ===================== */
-const Engine = (() => {
-  let worker, seq = 0, readyRes, readyRej, info = null;
+// One engine copy per background thread. `Engine` does analysis in the background;
+// `Play` is a small pool that the bot's thinking (and tutor checks) use, so the bot never
+// waits behind analysis and its move search is spread across the processor's cores.
+function makeEngineWorker(cacheBits) {
+  let worker, seq = 0, readyRes, readyRej, info = null, busy = 0;
   const pend = new Map();
   const ready = new Promise((res, rej) => { readyRes = res; readyRej = rej; });
-  function start() {
-    try {
-      if (window.GNUBG_WORKER_SRC) {
-        const blob = new Blob([window.GNUBG_WORKER_SRC], { type: 'text/javascript' });
-        worker = new Worker(URL.createObjectURL(blob));
-      } else worker = new Worker('engine-worker.js');
-    } catch (e) { readyRej(e); return; }
+  try {
+    if (window.GNUBG_WORKER_SRC) {
+      if (!makeEngineWorker.url) makeEngineWorker.url = URL.createObjectURL(new Blob([window.GNUBG_WORKER_SRC], { type: 'text/javascript' }));
+      worker = new Worker(makeEngineWorker.url);
+    } else worker = new Worker('engine-worker.js');
+  } catch (e) { readyRej(e); }
+  if (worker) {
     worker.onmessage = (ev) => {
       const d = ev.data;
-      if (d.type === 'ready') { info = d; readyRes(d); return; }
+      if (d.type === 'ready') { info = d; if (cacheBits) worker.postMessage({ id: 0, fn: 'setCache', args: [cacheBits] }); readyRes(d); return; }
       if (d.type === 'error') { readyRej(new Error(d.msg)); return; }
       const p = pend.get(d.id); if (!p) return;
-      pend.delete(d.id);
+      pend.delete(d.id); busy--;
       d.ok ? p.res(d.r) : p.rej(new Error(d.msg));
     };
     worker.onerror = (e) => readyRej(new Error(e.message || 'Engine failed to load'));
   }
+  ready.catch(() => { });
   function call(fn, ...args) {
-    return ready.then(() => new Promise((res, rej) => { const id = ++seq; pend.set(id, { res, rej }); worker.postMessage({ id, fn, args }); }));
+    busy++;
+    return ready.then(() => new Promise((res, rej) => { const id = ++seq; pend.set(id, { res, rej }); worker.postMessage({ id, fn, args }); }), (e) => { busy--; throw e; });
   }
-  start();
-  return { ready, call, get info() { return info; } };
-})();
+  return { ready, call, get info() { return info; }, get busy() { return busy; } };
+}
+const Engine = makeEngineWorker(0);
 
+const Play = (() => {
+  const cores = navigator.hardwareConcurrency || 4;
+  const mem = navigator.deviceMemory || 8;
+  let n = Math.max(1, Math.min(4, cores - 1));
+  if (mem <= 2) n = Math.min(n, 1); else if (mem <= 4) n = Math.min(n, 2);
+  try { const f = +new URLSearchParams(location.search).get('pool'); if (f >= 1 && f <= 6) n = f; } catch (e) { } // testing override
+  const workers = [];
+  // start the pool once the main engine is up, so first load isn't slowed down
+  const started = Engine.ready.then(() => { for (let i = 0; i < n; i++) workers.push(makeEngineWorker(17)); }).catch(() => { });
+  function readyWorkers() { return workers.filter(w => w.info); }
+  function pick() {
+    const r = readyWorkers();
+    if (!r.length) return Engine;
+    return r.reduce((a, b) => (b.busy < a.busy ? b : a));
+  }
+  const call = (fn, ...args) => pick().call(fn, ...args);
+
+  // gnubg's preset searches: plies and move filters [accept, extra, threshold] per ply
+  const N8 = [0, 8, 0.16], L16 = [0, 16, 0.32], SKIP = [-1, 0, 0], L4 = [0, 4, 0.08];
+  const SEARCH = { 4: { plies: 0, f: [] }, 5: { plies: 2, f: [N8, SKIP] }, 6: { plies: 2, f: [L16, SKIP] }, 7: { plies: 3, f: [L16, SKIP, L4] } };
+  const byScore = (a, b) => (b.eq - a.eq) || ((b.eq2 || 0) - (a.eq2 || 0));
+
+  // score `list` at `plies`, split across the ready engines
+  async function scoreSplit(opp, me, list, plies, ctx, level) {
+    const ws = readyWorkers();
+    const pool = ws.length ? ws : [Engine];
+    const chunks = pool.map(() => []);
+    list.forEach((m, i) => chunks[i % pool.length].push(m));
+    const res = await Promise.all(chunks.map((c, i) => c.length ? pool[i].call('scoreList', opp, me, c.map(m => padMove(m.move)), plies, ctx, level) : []));
+    chunks.forEach((c, i) => c.forEach((m, j) => { const r = res[i][j]; m.eq = r.eq; m.eq2 = r.eq2; m.probs = r.probs; m.ply = plies; }));
+  }
+  const padMove = (mv) => { const a = mv.slice(0, 8); while (a.length < 8) a.push(-1); return a; };
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+  // The bot's (or tutor's) move search: the same steps as gnubg's own, with each deep step shared out.
+  async function moves(opp, me, d0, d1, ctx, level, played) {
+    await started;
+    const S = SEARCH[level];
+    if (!S || readyWorkers().length < 2) return pick().call('moves', opp, me, d0, d1, ctx, level, played);
+    const base = await pick().call('moves', opp, me, d0, d1, ctx, 4, played); // every move, scored at 0-ply
+    const all = base.moves.map(m => ({ ...m, eq2: m.probs[5] }));
+    let playedIdx = base.played;
+    const playedMove = playedIdx >= 0 ? all[playedIdx] : null;
+    if (!all.length) return { moves: [], played: -1, total: 0 };
+    let cand = all.length, maxPly = 0;
+    let finished = false;
+    for (let iPly = 0; iPly < S.plies; iPly++) {
+      const f = S.f[iPly] || [0, 0, 0];
+      if (f[0] < 0) continue;
+      if (iPly > 0) await scoreSplit(opp, me, all.slice(0, cand), iPly, ctx, level);
+      const head = all.slice(0, cand).sort(byScore);
+      all.splice(0, cand, ...head);
+      const k = cand;
+      cand = Math.min(f[0], cand);
+      const limit = Math.min(k, cand + f[1]);
+      for (; cand < limit; cand++) if (all[cand].eq < all[0].eq - f[2]) break;
+      maxPly = iPly;
+      if (cand === 1 && f[0] !== 1) { finished = true; break; }
+    }
+    if (!finished) {
+      await scoreSplit(opp, me, all.slice(0, cand), S.plies, ctx, level);
+      const head = all.slice(0, cand).sort(byScore);
+      all.splice(0, cand, ...head);
+      maxPly = S.plies;
+    }
+    // analysis: make sure the played move and the best move are judged at full depth
+    if (playedMove) {
+      const need = [];
+      if (playedMove.ply < S.plies && !same(playedMove.move, all[0].move)) need.push(playedMove);
+      if (need.length && all[0].ply < S.plies) need.push(all[0]);
+      if (need.length) await scoreSplit(opp, me, need, S.plies, ctx, level);
+    }
+    const out = all.map(m => ({ move: m.move, eq: m.eq, probs: m.probs, ply: m.ply }));
+    const pi = playedMove ? all.indexOf(playedMove) : -1;
+    return { moves: out, played: pi, total: base.total };
+  }
+  return { call, moves, get size() { return readyWorkers().length; } };
+})();
 /* ===================== HELPERS ===================== */
 const LEVELS = [
   { v: 4, name: 'Expert', note: '0-ply, instant' },
@@ -161,13 +244,15 @@ const Game = (() => {
     if (playedIdx >= ANALYSIS_MAX_CANDS && res.moves[playedIdx]) keep.push({ ...res.moves[playedIdx], i: playedIdx });
     return keep.map(m => ({ m: m.move, eq: +m.eq.toFixed(5), pr: m.probs.map(x => +x.toFixed(4)), ply: m.ply, i: m.i }));
   }
-  async function analyseMove(rec, precomputed) {
+  // fg = someone is waiting for this (tutor): use the play pool; otherwise background engine
+  async function analyseMove(rec, precomputed, fg) {
     const me = rec.b[rec.p], opp = rec.b[1 - rec.p];
     try {
       if (rec.forcedNone) { rec.an = { cands: [], played: -1, loss: 0, total: 0 }; }
       else {
         const played = R.toGnubg(rec.subs);
-        const res = precomputed || await Engine.call('moves', opp, me, rec.dice[0], rec.dice[1], rec.ctx, aLevel(), played);
+        const res = precomputed || (fg ? await Play.moves(opp, me, rec.dice[0], rec.dice[1], rec.ctx, aLevel(), played)
+          : await Engine.call('moves', opp, me, rec.dice[0], rec.dice[1], rec.ctx, aLevel(), played));
         let pi = precomputed ? 0 : res.played;
         if (pi < 0) pi = 0;
         // best = highest eq among full-ply moves
@@ -211,9 +296,9 @@ const Game = (() => {
     return rec;
   }
   // engine 'cube' wants (opp, me) for the doubler on roll
-  function cubeCall(doubler, ctx) {
+  function cubeCall(doubler, ctx, fg) {
     const b = cur().b;
-    return Engine.call('cube', b[1 - doubler], b[doubler], ctx, aLevel());
+    return (fg ? Play : Engine).call('cube', b[1 - doubler], b[doubler], ctx, aLevel());
   }
   // (analysis level follows the bot's level, so the bot's own cube decisions use it too)
   async function ensureAnalysis(rec) {
@@ -298,7 +383,7 @@ const Game = (() => {
     save();
     ui.update && ui.update();
     const dbl = canDouble(0);
-    pendingCube = dbl ? cubeCall(0, ctxFor(0)) : null;
+    pendingCube = dbl ? cubeCall(0, ctxFor(0), M.mode === 'tutor' || !friend()) : null;
     if (!dbl && Settings.autoRoll) { await sleep(120); return doRoll(); }
     board.drawButtons(prerollButtons(dbl));
     if (dbl) drawCubeNow(true);
@@ -489,7 +574,7 @@ const Game = (() => {
     if (M.mode === 'tutor' && !rec.forced && !rec.forcedNone && !rec.tutorDone) {
       phase = 'tutor';
       board.drawStatus(0, 'Checking your move');
-      await analyseMove(rec);
+      await analyseMove(rec, null, true);
       board.drawStatus(0, '');
       rec.tutorDone = true;
       if (rec.an && tutorFlag(rec.an.loss)) {
@@ -617,7 +702,7 @@ const Game = (() => {
     // resignation check + cube decision
     let ca = null;
     if (canDouble(1)) {
-      ca = await cubeCall(1, ctxFor(1));
+      ca = await cubeCall(1, ctxFor(1), true);
       const rec = { k: 'cube', p: 1, doubler: 1, action: 'nodouble', b: clone(c.b), ctx: ctxFor(1) };
       const doubles = [0, 1, 5, 7, 8, 16, 17, 18, 19, 20].includes(ca.cd);
       rec.action = doubles ? 'double' : 'nodouble';
@@ -736,7 +821,7 @@ const Game = (() => {
     const t0 = performance.now();
     let thinking = setTimeout(() => board.drawStatus(1, 'Thinking'), 500);
     let res;
-    try { res = await Engine.call('moves', opp, me, dice[0], dice[1], ctx, M.level || 5); }
+    try { res = await Play.moves(opp, me, dice[0], dice[1], ctx, M.level || 5); }
     catch (e) { ui.toast && ui.toast('Engine error: ' + e.message); return; }
     clearTimeout(thinking); board.drawStatus(1, '');
     const el = performance.now() - t0;
@@ -955,8 +1040,8 @@ const Game = (() => {
     // bot evaluates from its own perspective as if on roll
     const ctx = ctxFor(1);
     let ev;
-    if (c.turn === 1 || c.turn === -1) ev = await Engine.call('evaluate', c.b[0], c.b[1], ctx, aLevel());
-    else { const e0 = await Engine.call('evaluate', c.b[1], c.b[0], ctxFor(0), aLevel()); ev = { eq: -e0.eq }; }
+    if (c.turn === 1 || c.turn === -1) ev = await Play.call('evaluate', c.b[0], c.b[1], ctx, aLevel());
+    else { const e0 = await Play.call('evaluate', c.b[1], c.b[0], ctxFor(0), aLevel()); ev = { eq: -e0.eq }; }
     const val = await Engine.call('pointsEq', lvl, ctx);
     const accept = val >= ev.eq - 1e-4;
     if (accept) {

@@ -6,9 +6,10 @@ Backgammon in the browser against the GNU Backgammon engine (World Class to Gran
 
 ## How it's put together
 - `index.html` – the app (built from `src/`).
-- `gnubg-engine.js` – GNU Backgammon compiled to WebAssembly, with its neural nets, bearoff databases and the Rockwell-Kazaross match equity table embedded. `gnubg-engine-asm.js` is a plain-JavaScript fallback for browsers that block WebAssembly.
+- `gnubg-engine.js` + `.wasm` – GNU Backgammon compiled to WebAssembly with SIMD; `gnubg-engine-nosimd.*` for older browsers; `gnubg-engine-asm.js` a plain-JavaScript fallback. `gnubg-engine-data.bin` holds the neural nets, bearoff databases and the Rockwell-Kazaross match equity table.
+- The bot thinks on a small pool of engine copies (one per spare processor core), following gnubg's own search steps; analysis runs on a separate engine so it never delays the bot.
 - `engine-worker.js`, `engine-api.js` – run the engine in a background thread.
-- `src/` – the app's source (rules, board, game flow, review, screens). Rebuild with `python3 tools/build.py`.
+- `src/` – the app's source (rules, board, game flow, review, screens). Rebuild with `python3 tools/build.py`; rebuild the engines with `engine/build-all.sh`.
 - `engine/` – the small C API (`bgapi.c`) and build scripts used to compile gnubg with Emscripten.
 
 ## Licence
