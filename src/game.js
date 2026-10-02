@@ -425,9 +425,17 @@ const Game = (() => {
     turnInfo = R.turnInfo(me, opp, dice[0], dice[1]);
     pendingRecord = { k: 'move', p: 0, dice: dice.slice(), b: clone(c.b), ctx: ctxFor(0), subs: [] };
     if (turnInfo.maxTotal === 0) {
-      // no legal move: skip straight to the bot's turn
       phase = 'auto';
       pendingRecord.forcedNone = true;
+      // shut out completely (no roll at all could move): skip straight on.
+      // Otherwise show the roll so it is clear what was rolled, then pass the turn.
+      if (!opening && !shutOut(me, opp)) {
+        busy = true;
+        await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0);
+        ui.toast && ui.toast('No legal move with ' + dice.join('-'));
+        await sleep(1100);
+        busy = false;
+      }
       return commitHuman(true);
     }
     if (!opening) { busy = true; await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0); busy = false; }
@@ -805,7 +813,13 @@ const Game = (() => {
     c.turn = 1; c.dice = dice;
     ui.update && ui.update();
     if (!opening && R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal === 0) {
-      // the bot cannot move: record the roll and go straight to your turn
+      // the bot cannot move: show the roll unless no roll at all could move, then go to your turn
+      if (!shutOut(c.b[1], c.b[0])) {
+        await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
+        ui.toast && ui.toast(oppName() + ' can’t move with ' + dice.join('-'));
+        await sleep(1100);
+        board.drawDice(null);
+      }
       const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx: ctxFor(1), subs: [], forcedNone: true };
       analyseMove(rec);
       game().recs.push(rec);
@@ -933,6 +947,11 @@ const Game = (() => {
       }
     }
   }
+  // true when no roll at all (all 21) would give this side a legal move, e.g. on the bar against a closed board
+  function shutOut(me, opp) {
+    for (let a = 1; a <= 6; a++) for (let b = a; b <= 6; b++) if (R.turnInfo(me, opp, a, b).maxTotal > 0) return false;
+    return true;
+  }
   async function remotePlay(dice, opening) {
     phase = 'remote';
     const c = cur();
@@ -941,7 +960,7 @@ const Game = (() => {
     const ctx = ctxFor(1);
     const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx, subs: [] };
     const canMove = R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal > 0;
-    if (canMove) {
+    if (canMove || !shutOut(c.b[1], c.b[0])) {
       if (!opening) await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
       else board.drawDice({ p: 1, vals: dice.slice(), used: [false, false], order: [0, 1] });
     }

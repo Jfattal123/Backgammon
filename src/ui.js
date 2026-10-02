@@ -462,7 +462,7 @@ const UI = (() => {
     Sound.on = Settings.sound;
     Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver });
     document.addEventListener('keydown', (e) => {
-      if ($('#scrim') || !$('#review').hidden || $('#menu')) { if (e.key === 'Escape') { closeMenu(); if (!$('#review').hidden) Review.close(); } return; }
+      if ($('#scrim') || !$('#review').hidden || $('#menu')) { if (e.key === 'Escape') { closeMenu(); if (!$('#review').hidden) Review.back(); } return; }
       if (!$('#tutor').hidden) return;
       Game.key(e);
     });
