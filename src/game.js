@@ -1021,7 +1021,49 @@ const Game = (() => {
     ui.update && ui.update();
     await sleep(350);
     ui.gameOver && ui.gameOver(g, M);
-    if (M.over) { archive(); if (friend()) setTimeout(() => Net.leave(), 4000); }
+    if (M.over) { archive(); if (friend()) rematchListen(M); }
+  }
+  /* ---------- rematch: same settings again (and the same friend, over the same connection) ---------- */
+  let rm = null;   // { M, mine, theirs } for the finished friend match
+  function rematchOpts(m) {
+    return { mode: m.mode, matchTo: m.matchTo, cubeOn: m.cubeOn, jacoby: m.jacoby, level: m.level, opp: m.opp, net: m.opp === 'friend' ? Net.state : null, oppName: m.oppName };
+  }
+  async function rematchListen(myM) {
+    rm = { M: myM, mine: false, theirs: false };
+    while (true) {
+      let act;
+      try { act = await Net.next(); } catch (e) { return; }
+      if (!rm || rm.M !== myM || M !== myM) return;
+      if (act.t === 'rm') {
+        rm.theirs = true;
+        if (rm.mine) return startRematch();
+        ui.rematch && ui.rematch('asked');
+      } else if (act.t === 'rmno') {
+        rm.mine = false;
+        ui.rematch && ui.rematch('declined');
+      }
+    }
+  }
+  function startRematch() {
+    const opts = rematchOpts(M);
+    rm = null;
+    if (opts.opp === 'friend') Net.cancelWaits();
+    ui.rematch && ui.rematch('start');
+    newMatch(opts);
+  }
+  // returns 'started' or 'waiting'
+  function requestRematch() {
+    if (!M || !M.over) return null;
+    if (!friend()) { startRematch(); return 'started'; }
+    if (!Net.state) { ui.toast && ui.toast(`${oppName()} has left`); return null; }
+    if (!rm || rm.M !== M) rematchListen(M);
+    rm.mine = true;
+    Net.send({ t: 'rm' });
+    if (rm.theirs) { startRematch(); return 'started'; }
+    return 'waiting';
+  }
+  function declineRematch() {
+    if (rm && friend()) { rm.theirs = false; try { Net.send({ t: 'rmno' }); } catch (e) { } }
   }
   function archive() {
     const hist = Store.get('history', []);
@@ -1119,7 +1161,8 @@ const Game = (() => {
 
   return {
     attach(b, hooks) { board = b; Object.assign(ui, hooks); },
-    newMatch, resume, nextGame, humanResign, stats, ensureAnalysis, band,
+    newMatch, resume, nextGame, humanResign, stats, ensureAnalysis, band, requestRematch, declineRematch,
+    get rematchAsked() { return !!(rm && rm.M === M && rm.theirs); },
     get M() { return M; }, get phase() { return phase; }, get busy() { return busy; }, previewBest,
     canPick, dests, tap, drop, undo, diceTap, swapDice,
     button(id) {

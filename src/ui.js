@@ -254,6 +254,7 @@ const UI = (() => {
     m.className = 'menu'; m.id = 'menu'; m.setAttribute('role', 'menu');
     const live = Game.M && !Game.M.over && Game.phase !== 'over';
     m.innerHTML = `<button role="menuitem" data-a="new">${ICON.plus}New match</button>
+      ${Game.M && Game.M.over ? `<button role="menuitem" data-a="rematch">${ICON.plus}Rematch${Game.rematchAsked ? ' <span class="chip plain">asked</span>' : ''}</button>` : ''}
       ${live ? `<button role="menuitem" data-a="resign">${ICON.flag}Resign…</button>` : ''}
       <div class="sep"></div>
       <button role="menuitem" data-a="settings">${ICON.gear}Settings</button>`;
@@ -266,6 +267,7 @@ const UI = (() => {
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
       if (b.dataset.a === 'new') showSetup();
+      if (b.dataset.a === 'rematch') { if (!$('#review').hidden) Review.close(); rematch(); }
       if (b.dataset.a === 'resign') showResign();
       if (b.dataset.a === 'settings') showSettings();
     });
@@ -418,11 +420,15 @@ const UI = (() => {
     const subtitle = `${who} +${pts} point${pts > 1 ? 's' : ''}${kind === 'resign' ? ' · ' + how : ''}${M.matchTo ? ` · Score ${M.score[0]}–${M.score[1]} (${M.matchTo}-point match)` : ''}`;
     const s = openCard(`<h2>${esc(title)}</h2><p class="sub">${esc(subtitle)}</p>
       <div id="goStats"><span class="loading"><span class="spin"></span>Finishing the analysis…</span></div>
+      ${matchOver ? '<div id="goRm" class="rmnote" hidden></div>' : ''}
       <div class="row" style="justify-content:flex-end">
         <button class="btnx" id="goReview">${matchOver && M.matchTo ? 'Review match' : 'Review game'}</button>
-        <button class="btnx primary" id="goNext" autofocus>${matchOver ? 'New match' : 'Next game'}</button></div>`, { dismiss: false });
+        ${matchOver ? '<button class="btnx" id="goNew">New match</button>' : ''}
+        <button class="btnx primary" id="goNext" autofocus>${matchOver ? 'Rematch' : 'Next game'}</button></div>`, { dismiss: false });
     $('#goReview').onclick = () => { closeCard(); Review.open(M, matchOver && M.matchTo ? 'all' : M.games.length - 1, true); };
-    $('#goNext').onclick = () => { closeCard(); if (matchOver) showSetup(); else Game.nextGame(); };
+    if (matchOver) $('#goNew').onclick = () => { closeCard(); showSetup(); };
+    $('#goNext').onclick = () => { if (matchOver) rematch(); else { closeCard(); Game.nextGame(); } };
+    if (matchOver && Game.rematchAsked) rematchUI('asked');
     // finish pending analyses for this game
     for (const r of g.recs) await Game.ensureAnalysis(r);
     if (!M.over) Store.set('current', M);
@@ -437,6 +443,42 @@ const UI = (() => {
         <div class="rating">${prLabel(st.prAll) || 'No decisions'}</div>
         <div class="kv"><span>Checker</span><span>${pr(st.prChecker)}</span><span>Cube</span><span>${pr(st.prCube)}</span><span>Luck</span><span>${st.luckPts >= 0 ? '+' : '−'}${Math.abs(st.luckPts).toFixed(2)}</span></div></div>`).join('')}
     </div>`;
+  }
+
+  /* ---------- rematch ---------- */
+  function rmDesc(M) { return `${M.matchTo ? M.matchTo + '-point match' : 'single game'}${M.cubeOn ? '' : ', no cube'}`; }
+  function rematch() {
+    const M = Game.M;
+    if (!M || !M.over) return;
+    Sound.unlock && Sound.unlock();
+    const r = Game.requestRematch();
+    if (r === 'started' || r == null) return;
+    // waiting for the friend to accept
+    if (!$('#goRm')) {
+      openCard(`<h2>Rematch</h2><p class="sub">Same settings: ${esc(rmDesc(M))}.</p><div id="goRm" class="rmnote"></div>
+        <div class="row" style="justify-content:flex-end"><button class="btnx" id="rmCancel">Close</button></div>`, { dismiss: false });
+      $('#rmCancel').onclick = () => closeCard();
+    }
+    rematchUI('waiting');
+  }
+  function rematchUI(state) {
+    const M = Game.M, name = esc(Game.oppName);
+    if (state === 'start') { closeCard(); if (!$('#review').hidden) Review.close(); toast('Rematch'); return; }
+    let el = $('#goRm');
+    if (state === 'asked' && !el) {
+      if (!$('#review').hidden || $('#scrim')) { toast(`${Game.oppName} wants a rematch. Use the menu to accept.`); return; }
+      openCard(`<h2>${name} wants a rematch</h2><p class="sub">Same settings: ${esc(rmDesc(M))}.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btnx" id="rmNo">Not now</button><button class="btnx primary" id="rmYes" autofocus>Play again</button></div>`, { dismiss: false });
+      $('#rmNo').onclick = () => { Game.declineRematch(); closeCard(); };
+      $('#rmYes').onclick = () => rematch();
+      return;
+    }
+    if (!el) { if (state === 'declined') toast(`${Game.oppName} doesn’t want a rematch`); return; }
+    el.hidden = false;
+    const btn = $('#goNext');
+    if (state === 'waiting') { el.innerHTML = `<span class="loading"><span class="spin"></span>Waiting for ${name} to accept…</span>`; if (btn) { btn.disabled = true; btn.textContent = 'Asked'; } }
+    if (state === 'asked') { el.innerHTML = `<b>${name} wants a rematch.</b>`; if (btn) { btn.disabled = false; btn.textContent = 'Accept rematch'; } }
+    if (state === 'declined') { el.innerHTML = `${name} doesn’t want a rematch right now.`; if (btn) { btn.disabled = false; btn.textContent = 'Ask again'; } }
   }
 
   /* ---------- boot ---------- */
@@ -460,7 +502,7 @@ const UI = (() => {
       sound: (k) => Sound.play(k)
     });
     Sound.on = Settings.sound;
-    Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver });
+    Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver, rematch: rematchUI });
     document.addEventListener('keydown', (e) => {
       if ($('#scrim') || !$('#review').hidden || $('#menu')) { if (e.key === 'Escape') { closeMenu(); if (!$('#review').hidden) Review.back(); } return; }
       if (!$('#tutor').hidden) return;

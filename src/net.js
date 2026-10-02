@@ -64,6 +64,7 @@ const RoomNet = (() => {
     send(action) { if (!st) return; action.s = st.out.length + 1; st.out.push(action); publish(); },
     // next action from the friend (in order)
     next() { return new Promise(res => { waiters.push(res); deliver(); }).then(a => { st.inSeq = a.s; return a; }); },
+    cancelWaits() { waiters = []; },
     async leave() { try { if (unsub) unsub(); if (gr) await gr.leave(); } catch (e) { } gr = null; st = null; queue = []; waiters = []; },
     get state() { return st; },
     get connected() { return !!oppPeer; },
@@ -201,6 +202,7 @@ const FbNet = (() => {
       ref(st.role + '/log/' + action.s).set(action).catch(e => console.warn('send failed', e));
     },
     next() { return new Promise(res => { waiters.push(res); deliver(); }).then(a => { st.inSeq = a.s; return a; }); },
+    cancelWaits() { waiters = []; },
     async leave() {
       try { if (st && db) await ref(st.role + '/online').set(false); } catch (e) { }
       offs.forEach(f => { try { f(); } catch (e) { } }); offs = [];
@@ -225,6 +227,7 @@ const Net = {
   setHooks(h) { return this.impl.setHooks(h); },
   send(a) { return this.impl.send(a); },
   next() { return this.impl.next(); },
+  cancelWaits() { return this.impl.cancelWaits(); },
   leave() { return this.impl.leave(); },
   get state() { return this.impl.state; },
   get connected() { return this.impl.connected; },
