@@ -5,7 +5,8 @@ const G = { F: 14, FV: 26, RAIL: 54, PW: 64, BAR: 58, TRAY: 66, CD: 58, MID: 100
 // compact frame (phones held upright): thinner rails, bar and tray so the points and checkers get more of the width
 G.setFrame = function (compact) {
   this.COMPACT = !!compact;
-  Object.assign(this, compact ? { F: 8, RAIL: 40, BAR: 50, TRAY: 50 } : { F: 14, RAIL: 54, BAR: 58, TRAY: 66 });
+  // compact: edge-to-edge points, no side rail (cube and pips move to the bar and tray), checkers fill the point width
+  Object.assign(this, compact ? { F: 0, RAIL: 0, BAR: 46, TRAY: 36, CD: 62, TIN: 28, SLAB: 24, BAROFF: 54 } : { F: 14, RAIL: 54, BAR: 58, TRAY: 66, CD: 58, TIN: 52, SLAB: 44, BAROFF: 46 });
   this.W = this.F + this.RAIL + 12 * this.PW + this.BAR + this.TRAY + this.F;
   this.FL = this.F + this.RAIL;                 // field left
   this.XR = this.FL + 6 * this.PW + this.BAR;   // right half start
@@ -66,7 +67,7 @@ function geo(flip) {
     if (loc.t === 'bar') {
       const step = count <= 3 ? G.CD * 0.92 : (G.CD * 2.6) / (count - 1);
       // human (p0) enters top -> sits in top half of bar; bot in bottom half
-      const y = loc.p === 0 ? G.MIDY - 46 - k * step : G.MIDY + 46 + k * step;
+      const y = loc.p === 0 ? G.MIDY - G.BAROFF - k * step : G.MIDY + G.BAROFF + k * step;
       return { x: mx(G.BARX), y };
     }
     // off tray
@@ -79,7 +80,7 @@ function geo(flip) {
   function cubePos(owner, offeredTo) {
     if (offeredTo === 0 || offeredTo === 1) { const c = halfCenter(offeredTo); return { x: c.x, y: c.y }; }
     const y = owner === 0 ? G.H - G.FV - 34 : owner === 1 ? G.FV + 34 : G.MIDY;
-    return { x: mx(G.RAILX), y };
+    return { x: mx(G.COMPACT ? G.BARX : G.RAILX), y };
   }
   return { mx, ptX, isTop, stackPos, diceCenter, halfCenter, cubePos };
 }
@@ -127,7 +128,7 @@ function boardBaseSVG(flip, opts = {}) {
     <marker id="mArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f2b84b"/></marker>
     <marker id="mArrowG" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5fd39b"/></marker>
   </defs>`;
-  s += `<rect x="0" y="0" width="${G.W}" height="${G.H}" rx="18" fill="var(--frame)"/>`;
+  s += `<rect x="0" y="0" width="${G.W}" height="${G.H}" rx="${G.COMPACT ? 6 : 18}" fill="var(--frame)"/>`;
   // field halves
   const lx = g.mx(G.FL), rx = g.mx(G.XR);
   const hx = (x) => flip ? x - 6 * G.PW : x;
@@ -136,9 +137,9 @@ function boardBaseSVG(flip, opts = {}) {
   // bar
   s += `<rect x="${g.mx(G.BARX) - G.BAR / 2 + 6}" y="${G.FV}" width="${G.BAR - 12}" height="${G.FH}" rx="6" fill="#1a292d"/>`;
   // tray
-  const tx = g.mx(G.TRAYX) - (G.TRAY - 14) / 2;
-  s += `<rect x="${tx}" y="${G.FV}" width="${G.TRAY - 14}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
-  s += `<rect x="${tx}" y="${G.MIDY + 8}" width="${G.TRAY - 14}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
+  const tx = g.mx(G.TRAYX) - G.TIN / 2;
+  s += `<rect x="${tx}" y="${G.FV}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
+  s += `<rect x="${tx}" y="${G.MIDY + 8}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
   // points
   for (let i = 0; i < 24; i++) {
     const x = g.ptX(i), top = g.isTop(i);
@@ -149,7 +150,7 @@ function boardBaseSVG(flip, opts = {}) {
       const ny = top ? G.FV - 8 : G.H - G.FV + 17;
       const ry = top ? G.FV / 2 : G.H - G.FV / 2;
       s += ROT ? `<text class="ptnum" x="${x}" y="${ry}" text-anchor="middle" dominant-baseline="central"${trT(x, ry)}>${i + 1}</text>`
-        : `<text class="ptnum" x="${x}" y="${ny}" text-anchor="middle">${i + 1}</text>`;
+        : `<text class="ptnum" x="${x}" y="${G.COMPACT ? (top ? G.FV - 6 : G.H - G.FV + 19) : ny}" text-anchor="middle"${G.COMPACT ? ' style="font-size:16px"' : ''}>${i + 1}</text>`;
     }
   }
   return s;
@@ -163,7 +164,7 @@ function checkerSVG(id, p, humanLight, x, y, inTray) {
       <circle r="${r}" fill="${c.fill}" stroke="${c.rim}" stroke-width="1.5"/>
       <circle r="${r - 9}" fill="none" stroke="${c.ring}" stroke-width="2"/>
     </g>
-    <rect class="slab" ${inTray ? '' : 'style="display:none"'} x="${-(G.TRAY - 22) / 2}" y="-6" width="${G.TRAY - 22}" height="12" rx="3" fill="${c.slab}" stroke="${c.slabRim}" stroke-width="1"/>
+    <rect class="slab" ${inTray ? '' : 'style="display:none"'} x="${-G.SLAB / 2}" y="-6" width="${G.SLAB}" height="12" rx="3" fill="${c.slab}" stroke="${c.slabRim}" stroke-width="1"/>
   </g>`;
 }
 
@@ -365,6 +366,10 @@ function createBoard(svg, cb) {
       const pipTxt = (y, v, lblDy) => ROT
         ? `<text x="${rx}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)"${trT(rx, y)}>${v} <tspan font-size="9" opacity=".7" letter-spacing="1">PIPS</tspan></text>`
         : `<text x="${rx}" y="${y}" text-anchor="middle" font-size="13" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text><text x="${rx}" y="${y + lblDy}" text-anchor="middle" font-size="9" letter-spacing="1" fill="var(--board-text)" opacity=".7">PIPS</text>`;
+      if (G.COMPACT) {
+        const tx = g.mx(G.TRAYX), t = (y, v) => `<text x="${tx}" y="${y}" text-anchor="middle" font-size="16" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text>`;
+        layers.pips.innerHTML = pp ? t(G.MIDY + 30, pp[0]) + t(G.MIDY - 18, pp[1]) : '';
+      } else
       layers.pips.innerHTML = pp ? pipTxt(G.H - G.FV - 70, pp[0], -16) + pipTxt(G.FV + 78, pp[1], 16) : '';
     } else layers.pips.innerHTML = '';
   }
@@ -544,10 +549,12 @@ function createBoard(svg, cb) {
     if (!st || !st.on) { layers.cube.innerHTML = ''; return; }
     const pos = g.cubePos(st.owner, st.offeredTo);
     const val = st.offeredTo != null ? st.value * 2 : (st.owner === -1 ? (st.value > 1 ? st.value : 64) : st.value);
-    const size = st.offeredTo != null ? 64 : Math.min(46, G.RAIL + 2);
+    const size = st.offeredTo != null ? 64 : G.COMPACT ? 40 : 46;
     let html = cubeSVG(0, 0, val, size);
     let extra = '';
-    if (st.canDouble) {
+    if (st.canDouble && G.COMPACT) {
+      html = `<rect x="${-size / 2 - 4}" y="${-size / 2 - 4}" width="${size + 8}" height="${size + 8}" rx="10" fill="none" stroke="#f2b84b" stroke-width="2.5"><animate attributeName="opacity" values="1;.45;1" dur="1.6s" repeatCount="indefinite"/></rect>` + html;
+    } else if (st.canDouble) {
       // the cube itself is the Double button, with a small label beside it on the rail
       html = `<rect x="${-size / 2 - 5}" y="${-size / 2 - 5}" width="${size + 10}" height="${size + 10}" rx="12" fill="none" stroke="#f2b84b" stroke-width="2.5"><animate attributeName="opacity" values="1;.45;1" dur="1.6s" repeatCount="indefinite"/></rect>` + html;
       const q = ROT ? offs(pos, 64, 0) : offs(pos, 0, st.owner === 0 ? -48 : 48);
@@ -617,7 +624,7 @@ function createBoard(svg, cb) {
       const loc = locOf(0, d);
       if (loc.t === 'off') {
         const x = g.mx(G.TRAYX), y = G.MIDY + 8 + (G.FH / 2 - 8) / 2;
-        s += `<rect x="${x - (G.TRAY - 14) / 2}" y="${G.MIDY + 8}" width="${G.TRAY - 14}" height="${G.FH / 2 - 8}" rx="6" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
+        s += `<rect x="${x - G.TIN / 2}" y="${G.MIDY + 8}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
         continue;
       }
       const k = locKey(loc), n = (stacks.get(k) || []).length;

@@ -388,7 +388,7 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 
 /* ---------- portrait: board on top, big controls underneath ---------- */
 .dicebtn { border: 0; background: transparent; padding: 0 4px; display: inline-flex; gap: 8px; cursor: pointer; color: var(--fg); }
-#app.portrait .stage { padding-inline: max(4px, env(safe-area-inset-left, 0px)) max(4px, env(safe-area-inset-right, 0px)); }
+#app.portrait .stage { padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px); }
 #app.portrait .boardbox { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding-top: 4px; }
 #app.portrait #board { flex: 0 1 auto; min-height: 0; width: 100%; height: auto; max-height: 100%; }
 #app.portrait .actbar { position: static; transform: none; width: 100%; max-width: 560px; min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -397,7 +397,7 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 #app.portrait .actbar .side.r { justify-content: flex-end; }
 #app.portrait .actbar .btnx { flex: 0 1 140px; }
 #app.portrait .tutor { position: static; transform: none; width: 100%; max-width: 560px; animation: none; flex: 0 0 auto; }
-#app.portrait .actbar { flex: 0 0 auto; }
+#app.portrait .actbar { flex: 0 0 auto; box-sizing: border-box; padding-inline: 10px; }
 
 /* ---------- phone on its side: the top bar becomes a slim column on the right so the board gets the full height ---------- */
 @media (orientation: landscape) and (max-height: 520px) {
