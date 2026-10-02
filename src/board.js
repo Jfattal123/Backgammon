@@ -2,12 +2,18 @@
 // Board geometry. SLOTS = how many checkers a point shows before the stack squeezes up:
 // 5 is the classic look; short landscape screens use fewer (bigger checkers), tall screens more.
 const G = { F: 14, FV: 26, RAIL: 54, PW: 64, BAR: 58, TRAY: 66, CD: 58, MID: 100 };
-G.W = G.F + G.RAIL + 12 * G.PW + G.BAR + G.TRAY + G.F;
-G.FL = G.F + G.RAIL;                 // field left
-G.XR = G.FL + 6 * G.PW + G.BAR;      // right half start
-G.BARX = G.FL + 6 * G.PW + G.BAR / 2;
-G.TRAYX = G.XR + 6 * G.PW + G.TRAY / 2;
-G.RAILX = G.F + G.RAIL / 2;
+// compact frame (phones held upright): thinner rails, bar and tray so the points and checkers get more of the width
+G.setFrame = function (compact) {
+  this.COMPACT = !!compact;
+  Object.assign(this, compact ? { F: 8, RAIL: 40, BAR: 50, TRAY: 50 } : { F: 14, RAIL: 54, BAR: 58, TRAY: 66 });
+  this.W = this.F + this.RAIL + 12 * this.PW + this.BAR + this.TRAY + this.F;
+  this.FL = this.F + this.RAIL;                 // field left
+  this.XR = this.FL + 6 * this.PW + this.BAR;   // right half start
+  this.BARX = this.FL + 6 * this.PW + this.BAR / 2;
+  this.TRAYX = this.XR + 6 * this.PW + this.TRAY / 2;
+  this.RAILX = this.F + this.RAIL / 2;
+};
+G.setFrame(false);
 G.midFor = (n) => n <= 4 ? 82 : 100;   // short boards get a slimmer middle strip
 G.setSlots = function (n) {
   this.SLOTS = n; this.MID = this.midFor(n);
@@ -18,12 +24,16 @@ G.setSlots = function (n) {
 };
 G.heightFor = (n) => G.FV * 2 + 2 * n * G.CD + G.midFor(n);
 G.setSlots(5);
-// Pick the point length that makes the checkers biggest in a w x h box
-G.bestSlots = function (w, h) {
+// Pick the point length (checkers per point before stacks squeeze) for a w x h box.
+// Big screens keep the classic 5 (or longer if there is spare height). Small screens trade a little
+// checker size for natural proportions: 4 is fine, 3 only when there is no other way.
+G.bestSlots = function (w, h, maxN = 10) {
   const px = (n) => this.CD * Math.min(w / this.W, h / this.heightFor(n));
-  let max = 0; for (let n = 3; n <= 10; n++) max = Math.max(max, px(n));
-  if (px(5) >= 40) { let best = 5; for (let n = 5; n <= 10; n++) if (px(n) >= px(5) * 0.99) best = n; return best; }
-  let best = 3; for (let n = 3; n <= 10; n++) if (px(n) >= max * 0.99) best = n; return best;
+  if (px(5) >= 40) { let best = 5; for (let n = 5; n <= maxN; n++) if (px(n) >= px(5) * 0.99) best = n; return best; }
+  const pen = { 3: 0.62, 4: 0.84 };
+  let best = 5, bs = -1;
+  for (let n = 3; n <= maxN; n++) { const sc = px(n) * (pen[n] || 1); if (sc >= bs * 0.995) { if (sc > bs) bs = sc; best = n; } }
+  return best;
 };
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -196,8 +206,8 @@ function arrowPath(g, fromLoc, toLoc, fromK, toK) {
 // Full static board snapshot as SVG string (review / previews).
 // st: {b:[b0,b1], dice:[d0,d1]|null, diceP, cube, owner, arrows:[{p, pairs, color}] }
 function staticBoardSVG(st, o) {
-  const savedRot = ROT, savedSlots = G.SLOTS; ROT = 0; G.setSlots(5);
-  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setSlots(savedSlots); }
+  const savedRot = ROT, savedSlots = G.SLOTS, savedFrame = G.COMPACT; ROT = 0; G.setFrame(false); G.setSlots(5);
+  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setFrame(savedFrame); G.setSlots(savedSlots); }
 }
 function staticBoardSVG0(st, o) {
   const flip = !!o.flip, humanLight = o.humanLight !== false;
@@ -255,7 +265,7 @@ function arrowsSVG(g, bb, p, pairs, color) {
 
 /* ---------- Interactive board ---------- */
 function createBoard(svg, cb) {
-  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5;
+  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5, compact = false;
   let g = geo(false);
   const stacks = new Map(); // locKey -> [ids]
   const where = new Map();  // id -> loc
@@ -534,7 +544,7 @@ function createBoard(svg, cb) {
     if (!st || !st.on) { layers.cube.innerHTML = ''; return; }
     const pos = g.cubePos(st.owner, st.offeredTo);
     const val = st.offeredTo != null ? st.value * 2 : (st.owner === -1 ? (st.value > 1 ? st.value : 64) : st.value);
-    const size = st.offeredTo != null ? 64 : 46;
+    const size = st.offeredTo != null ? 64 : Math.min(46, G.RAIL + 2);
     let html = cubeSVG(0, 0, val, size);
     let extra = '';
     if (st.canDouble) {
@@ -542,8 +552,8 @@ function createBoard(svg, cb) {
       html = `<rect x="${-size / 2 - 5}" y="${-size / 2 - 5}" width="${size + 10}" height="${size + 10}" rx="12" fill="none" stroke="#f2b84b" stroke-width="2.5"><animate attributeName="opacity" values="1;.45;1" dur="1.6s" repeatCount="indefinite"/></rect>` + html;
       const q = ROT ? offs(pos, 64, 0) : offs(pos, 0, st.owner === 0 ? -48 : 48);
       extra = `<g class="btn" data-btn="double" role="button" tabindex="0" aria-label="Offer a double" transform="translate(${q.x},${q.y})${trG()}">
-        <rect x="-26" y="-13" width="52" height="26" rx="13" fill="#f2b84b"/>
-        <text y="4" text-anchor="middle" font-size="10.5" font-weight="800" letter-spacing=".3" fill="#16201d">DOUBLE</text></g>`;
+        <rect x="${-Math.min(26, G.RAIL / 2 + 4)}" y="-13" width="${Math.min(52, G.RAIL + 8)}" height="26" rx="13" fill="#f2b84b"/>
+        <text y="4" text-anchor="middle" font-size="${G.COMPACT ? 8.5 : 10.5}" font-weight="800" letter-spacing=".3" fill="#16201d">DOUBLE</text></g>`;
     }
     layers.cube.innerHTML = `<g class="cubewrap${st.canDouble ? ' btn' : ''}" ${st.canDouble ? 'data-btn="double" role="button" aria-label="Offer a double"' : ''} transform="translate(${pos.x},${pos.y})${trG()}">${html}</g>${extra}`;
     if (animate && prevPos && !reduceMotion && (prevPos.x !== pos.x || prevPos.y !== pos.y)) {
@@ -748,7 +758,7 @@ function createBoard(svg, cb) {
 
   build();
   return {
-    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; } G.setSlots(slots); build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
+    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; if (o.compact != null) compact = !!o.compact; } G.setFrame(compact); G.setSlots(slots); build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
     get rot() { return rot; },
     get slots() { return slots; },
     toScreen(x, y) { const m = root.getScreenCTM(); return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }; },

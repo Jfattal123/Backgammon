@@ -31,8 +31,11 @@ function boardSlots() {
   if (!r.width || !r.height) return 5;
   const portrait = document.getElementById('app').classList.contains('portrait');
   const h = r.height - (portrait ? 84 : 0);
-  return G.bestSlots(r.width, Math.max(120, h));
+  // upright phones: a slimmer frame and points no longer than 7 checkers, so the board keeps real proportions
+  G.setFrame(portrait);
+  return G.bestSlots(r.width, Math.max(120, h), portrait ? 7 : 10);
 }
+const boardCompact = () => document.getElementById('app').classList.contains('portrait');
 const dotStyle = (p) => `background:${(p === 0) === Settings.humanLight ? '#f2efe9' : '#1a1d21'}`;
 
 const UI = (() => {
@@ -509,7 +512,7 @@ const UI = (() => {
       Game.key(e);
     });
     // initial board behind the setup card
-    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots() });
+    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots(), compact: boardCompact() });
     board.drawCube({ on: true, value: 1, owner: -1 });
     update();
     // re-orient the board when the screen shape changes (e.g. phone rotation)
@@ -526,7 +529,7 @@ const UI = (() => {
         if (Game.busy || (Game.M && ['opening', 'auto', 'botTurn', 'committing'].includes(Game.phase))) { rt = setTimeout(retry, 300); return; }
         lastRot = r;
         if (Game.M) Game.redraw();
-        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r, slots: sl }); board.drawCube({ on: true, value: 1, owner: -1 }); }
+        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r, slots: sl, compact: boardCompact() }); board.drawCube({ on: true, value: 1, owner: -1 }); }
       }, 150);
     };
     window.addEventListener('resize', onResize);
