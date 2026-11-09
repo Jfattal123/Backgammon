@@ -167,7 +167,9 @@ button { font: inherit; color: inherit; }
 }
 .card h2 { font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1.05; margin: 0; text-wrap: balance; }
 .card .sub { color: var(--muted); margin: -10px 0 0; font-size: 14px; line-height: 1.45; }
-.field { display: grid; gap: 8px; }
+.field { display: grid; gap: 8px; min-width: 0; }
+.field > * { min-width: 0; }
+.field select.sel { width: 100%; max-width: 100%; text-overflow: ellipsis; }
 .field > .lab { font-size: 11.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: var(--muted); }
 .seg { display: flex; background: var(--bg); border-radius: 11px; padding: 3px; gap: 3px; flex-wrap: wrap; }
 .seg button { flex: 1 1 0; border: 0; background: transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--muted); min-height: 38px; white-space: nowrap; }
@@ -193,12 +195,14 @@ select.sel { appearance: none; background: var(--bg); border: 0; border-radius: 
 .list { display: grid; gap: 6px; }
 .histitem { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg); cursor: pointer; border: 0; text-align: left; width: 100%; }
 .histitem:hover { background: var(--line); }
+.histitem[disabled] { opacity: .45; cursor: default; }
+.histitem[disabled]:hover { background: var(--bg); }
 .histitem .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .histitem .grow span:last-child { color: var(--muted); font-size: 12.5px; }
 
 .menu {
   position: fixed; z-index: 30; background: var(--surface-2); border-radius: 14px; box-shadow: var(--shadow); border: 1px solid var(--line);
-  padding: 6px; display: grid; min-width: 220px;
+  padding: 6px; display: grid; min-width: 220px; overflow: auto; overscroll-behavior: contain;
 }
 .menu button { border: 0; background: transparent; text-align: left; padding: 11px 12px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; gap: 10px; align-items: center; }
 .menu button:hover, .menu button:focus-visible { background: var(--bg); }
@@ -390,13 +394,14 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 .dicebtn { border: 0; background: transparent; padding: 0 4px; display: inline-flex; gap: 8px; cursor: pointer; color: var(--fg); }
 #app.portrait .stage { padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px); }
 #app.portrait .boardbox { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding-top: 4px; }
-#app.portrait #board { flex: 0 1 auto; min-height: 0; width: 100%; height: auto; max-height: 100%; }
+#app.portrait #board { flex: 0 0 auto; }
 #app.portrait .actbar { position: static; transform: none; width: 100%; max-width: 560px; min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #app.portrait .actbar[hidden] { display: flex !important; visibility: hidden; }
 #app.portrait .actbar .side { display: flex; gap: 8px; flex: 1 1 0; }
 #app.portrait .actbar .side.r { justify-content: flex-end; }
 #app.portrait .actbar .btnx { flex: 0 1 140px; }
-#app.portrait .tutor { position: static; transform: none; width: 100%; max-width: 560px; animation: none; flex: 0 0 auto; }
+#app.portrait .tutor { position: static; transform: none; width: calc(100% - 16px); max-width: 560px; animation: none; flex: 0 0 auto; box-sizing: border-box; }
+#app.portrait.tutoring .actbar { display: none !important; }
 #app.portrait .actbar { flex: 0 0 auto; box-sizing: border-box; padding-inline: 10px; }
 
 /* ---------- phone on its side: the top bar becomes a slim column on the right so the board gets the full height ---------- */
@@ -423,3 +428,13 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 input.txt { width: 100%; font: inherit; font-weight: 600; background-image: none; padding-right: 12px; cursor: text; }
 input.txt.code { width: 9ch; text-transform: uppercase; letter-spacing: 3px; font-family: var(--font-num); text-align: center; flex: 0 0 auto; }
 .codebig { font-size: 44px; font-weight: 600; letter-spacing: 8px; text-align: center; padding: 14px; background: var(--bg); border-radius: 14px; user-select: all; }
+
+/* review: the decision card shrinks gracefully when its column is narrow (small phones on their side) */
+.dcard { container-type: inline-size; }
+@container (max-width: 330px) {
+  .rvnav { gap: 6px; }
+  .navbtn span { display: none; }
+  .navbtn, .navbtn.next { padding: 0 12px; }
+  .navpos { font-size: 12px; }
+}
+@container (max-width: 250px) { .navpos span { display: none; } }

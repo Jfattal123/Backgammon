@@ -20,9 +20,12 @@ site = body.replace('<!--WORKER-->', '')
 open('index.html', 'w').write(head + site.replace('<div id="app">', '</head><body>\n<div id="app">', 1) + '\n</body></html>')
 os.makedirs('artifact', exist_ok=True)
 open('artifact/index.html', 'w').write(site)
-eng = 'self.GNUBG_INLINE = true;\n' + open('tools/gnubg-engine-single.js').read() + '\n' + open('engine-api.js').read() + '\n' + open('engine-worker.js').read()
-worker = '<script>window.GNUBG_WORKER_SRC = ' + json.dumps(eng).replace('</', '<\\/') + ';</script>'
-os.makedirs('dist', exist_ok=True)
-off = body.replace('<!--WORKER-->', worker)
-open('dist/Prime-Backgammon-offline.html', 'w').write(head + off.replace('<div id="app">', '</head><body>\n<div id="app">', 1) + '\n</body></html>')
-print('built index.html, artifact/index.html, dist/Prime-Backgammon-offline.html')
+if os.path.exists('tools/gnubg-engine-single.js'):
+  eng = 'self.GNUBG_INLINE = true;\n' + open('tools/gnubg-engine-single.js').read() + '\n' + open('engine-api.js').read() + '\n' + open('engine-worker.js').read()
+  worker = '<script>window.GNUBG_WORKER_SRC = ' + json.dumps(eng).replace('</', '<\\/') + ';</script>'
+  os.makedirs('dist', exist_ok=True)
+  off = body.replace('<!--WORKER-->', worker)
+  open('dist/Prime-Backgammon-offline.html', 'w').write(head + off.replace('<div id="app">', '</head><body>\n<div id="app">', 1) + '\n</body></html>')
+else:
+  print('(offline copy skipped: tools/gnubg-engine-single.js not present)')
+print('built index.html, artifact/index.html')

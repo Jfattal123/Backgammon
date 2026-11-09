@@ -41,7 +41,7 @@ const RoomNet = (() => {
       else if (!had) hooks.status && hooks.status('back');
       // take any actions we haven't applied or queued yet, in order
       const log = Array.isArray(opp.presence.log) ? opp.presence.log : [];
-      for (const a of log.slice().sort((x, y) => x.s - y.s)) if (a && a.s === queued + 1) { queue.push(a); queued = a.s; }
+      for (const a of log.slice().sort((x, y) => x.s - y.s)) if (a && a.s === queued + 1) { if (a.t === 'bye') { queued = a.s; st.inSeq = a.s; hooks.status && hooks.status('left'); } else queue.push(a); queued = a.s; }
       deliver();
     } else if (had) hooks.status && hooks.status('gone');
   }
@@ -148,7 +148,10 @@ const FbNet = (() => {
       const a = s.val();
       if (!a || typeof a.s !== 'number' || a.s <= queued) return;
       buf.set(a.s, a);
-      while (buf.has(queued + 1)) { queue.push(buf.get(queued + 1)); buf.delete(queued + 1); queued++; }
+      while (buf.has(queued + 1)) {
+        const x = buf.get(queued + 1); buf.delete(queued + 1); queued++;
+        if (x.t === 'bye') { st.inSeq = queued; hooks.status && hooks.status('left'); } else queue.push(x);
+      }
       deliver();
     });
     offs.push(() => nref.off('value', h1), () => oref.off('value', h2), () => lref.off('child_added', h3));
@@ -192,6 +195,8 @@ const FbNet = (() => {
       reset(state, h);
       oppSeen = true;
       watchOnline(); watch();
+      // re-send our latest actions in case the page closed before they reached the server (same keys: harmless)
+      for (const act of st.out.slice(-8)) ref(st.role + '/log/' + act.s).set(act).catch(() => { });
       return st;
     },
     setHooks(h) { hooks = Object.assign(hooks, h); },

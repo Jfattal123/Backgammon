@@ -18,24 +18,39 @@ function isPortrait() {
   const r = st.getBoundingClientRect();
   return r.height > r.width * 1.05;
 }
-function boardRot() {
-  document.getElementById('app').classList.toggle('portrait', isPortrait());
-  return 0;
-}
-// How many checkers fit on a point before stacks compress: chosen so the board fills the space
-// (taller on phones held upright, shorter and wider on phones held sideways).
-function boardSlots() {
+// One place decides how the board is drawn for the space available, from scratch each time:
+// upright phones get the compact frame with the controls underneath; everything else the standard frame.
+// The point length (checkers before a stack squeezes) and the exact pixel size follow from the space.
+// Nothing here changes the board itself; board.rebuild applies it.
+const ACTBAR_SPACE = 78; // big buttons + dice under the board on upright phones
+function boardLayout() {
+  const app = document.getElementById('app');
+  const portrait = isPortrait();
+  app.classList.toggle('portrait', portrait);
   const bx = document.querySelector('.boardbox');
-  if (!bx || typeof G === 'undefined') return 5;
-  const r = bx.getBoundingClientRect();
-  if (!r.width || !r.height) return 5;
-  const portrait = document.getElementById('app').classList.contains('portrait');
-  const h = r.height - (portrait ? 84 : 0);
-  // upright phones: a slimmer frame and points no longer than 7 checkers, so the board keeps real proportions
-  G.setFrame(portrait);
-  return G.bestSlots(r.width, Math.max(120, h), portrait ? 7 : 10);
+  const r = bx ? bx.getBoundingClientRect() : { width: 0, height: 0 };
+  const compact = portrait;
+  // upright phones: room for the control bar under the board, or for the tutor panel while it is open
+  const tu = document.getElementById('tutor');
+  const reserve = !portrait ? 0 : (tu && !tu.hidden ? tu.offsetHeight + 14 : ACTBAR_SPACE);
+  const w = Math.max(200, r.width || 0), h = Math.max(140, (r.height || 0) - reserve);
+  const W = G.widthOf(compact);
+  if (portrait) {
+    // upright phones: the board spans the width; points stay a natural length (6 checkers) and the
+    // middle strip (dice, cube, messages) grows to use the height, like a real board seen from above
+    const k = w / W, CD = G.frameOf(true).CD;
+    let slots = 6, room = h / k - 2 * G.frameOf(true).FV;
+    while (slots > 4 && room - 2 * slots * CD < 100) slots--;
+    while (slots < 8 && room - 2 * slots * CD > 400) slots++;   // very tall screens: a little longer points
+    const mid = Math.max(100, Math.min(420, Math.round(room - 2 * slots * CD)));
+    const H = G.heightOf(true, slots, mid), kk = Math.min(k, h / H);
+    return { rot: 0, compact, slots, mid, px: { w: W * kk, h: H * kk } };
+  }
+  const slots = G.bestSlots(w, h, 10, compact);
+  const H = G.heightOf(compact, slots);
+  const k = Math.min(w / W, h / H);
+  return { rot: 0, compact, slots, mid: 0, px: { w: W * k, h: H * k } };
 }
-const boardCompact = () => document.getElementById('app').classList.contains('portrait');
 const dotStyle = (p) => `background:${(p === 0) === Settings.humanLight ? '#f2efe9' : '#1a1d21'}`;
 
 const UI = (() => {
@@ -112,7 +127,7 @@ const UI = (() => {
   }
   function showSetup() {
     const saved = Store.get('current', null);
-    const canResume = saved && !saved.over && saved.cur && (!Game.M || Game.M.id !== saved.id || Game.M.over);
+    const canResume = saved && !saved.over && !saved.friendLeft && saved.cur && (!Game.M || Game.M.id !== saved.id || Game.M.over);
     const hist = Store.get('history', []).slice(0, 4);
     const st = setupState;
     const html = `
@@ -167,7 +182,7 @@ const UI = (() => {
       Sound.unlock();
       Store.set('setup', st);
       closeCard();
-      if (Game.M && Game.M.opp === 'friend') Net.leave();
+      if (Game.M && Game.M.opp === 'friend') Game.leaveFriend();
       Game.newMatch({ mode: st.mode, matchTo: st.format === 'single' ? 0 : st.len, cubeOn: st.cube, jacoby: st.format === 'single' && st.cube && st.jacoby, level: Settings.level });
     };
     if (canResume) $('#resume').onclick = () => { closeCard(); Game.resume(saved); };
@@ -188,7 +203,7 @@ const UI = (() => {
     return why + ' (Details: ' + String(code).slice(0, 160) + ')';
   }
   async function hostFriend(cfg, name) {
-    if (Game.M && Game.M.opp === 'friend') await Net.leave();
+    if (Game.M && Game.M.opp === 'friend') await Game.leaveFriend();
     const desc = `${cfg.matchTo ? cfg.matchTo + '-point match' : 'Single game'} · ${cfg.cubeOn ? 'with cube' : 'no cube'}${cfg.jacoby ? ' · Jacoby' : ''}`;
     let started = false;
     let st;
@@ -216,7 +231,7 @@ const UI = (() => {
     $('#cCancel').onclick = async () => { started = true; await Net.leave(); closeCard(); showSetup(); };
   }
   async function joinFriend(code, name) {
-    if (Game.M && Game.M.opp === 'friend') await Net.leave();
+    if (Game.M && Game.M.opp === 'friend') await Game.leaveFriend();
     let started = false;
     openCard(`<h2>Joining ${esc(code)}</h2><p class="sub">Looking for your friend’s game…</p>
       <div class="row" style="justify-content:space-between"><span class="loading"><span class="spin"></span>Connecting</span><button class="btnx" id="jCancel">Cancel</button></div>`, { dismiss: false });
@@ -250,9 +265,10 @@ const UI = (() => {
   }
 
   /* ---------- menu ---------- */
+  let menuAnchor = null;
   function showMenu(anchor) {
-    closeMenu();
-    const r = anchor.getBoundingClientRect();
+    if ($('#menu')) { closeMenu(); return; }   // the button toggles it
+    menuAnchor = anchor;
     const m = document.createElement('div');
     m.className = 'menu'; m.id = 'menu'; m.setAttribute('role', 'menu');
     const live = Game.M && !Game.M.over && Game.phase !== 'over';
@@ -262,10 +278,8 @@ const UI = (() => {
       <div class="sep"></div>
       <button role="menuitem" data-a="settings">${ICON.gear}Settings</button>`;
     document.body.appendChild(m);
-    const w = m.offsetWidth;
-    m.style.top = (r.bottom + 6) + 'px';
-    m.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
-    m.querySelector('button').focus();
+    placeMenu();
+    m.querySelector('button').focus({ preventScroll: true });
     m.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
@@ -276,24 +290,62 @@ const UI = (() => {
     });
     setTimeout(() => document.addEventListener('pointerdown', outside), 0);
   }
-  function outside(e) { const m = $('#menu'); if (m && !m.contains(e.target)) closeMenu(); }
+  // Keep the menu fully on screen whatever the layout: below the button if it fits, else above,
+  // else beside it (the side column on a phone held sideways), clamped to the visible area.
+  function placeMenu() {
+    const m = $('#menu'); if (!m || !menuAnchor) return;
+    const vv = window.visualViewport;
+    const vw = Math.min(window.innerWidth, vv ? vv.width + vv.offsetLeft : 1e9);
+    const vh = Math.min(window.innerHeight, vv ? vv.height + vv.offsetTop : 1e9);
+    const pad = 8, gap = 6;
+    m.style.maxHeight = (vh - 2 * pad) + 'px';
+    const r = menuAnchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+    let top, left;
+    const column = getComputedStyle(document.querySelector('.topbar')).flexDirection === 'column';
+    if (column && r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; }   // beside the side column
+    else if (r.bottom + gap + h <= vh - pad) { top = r.bottom + gap; left = r.right - w; }
+    else if (r.top - gap - h >= pad) { top = r.top - gap - h; left = r.right - w; }
+    else if (r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; }
+    else { left = r.right + gap; top = r.bottom - h; }
+    m.style.left = Math.max(pad, Math.min(vw - w - pad, left)) + 'px';
+    m.style.top = Math.max(pad, Math.min(vh - h - pad, top)) + 'px';
+  }
+  function outside(e) { const m = $('#menu'); if (m && !m.contains(e.target) && !(menuAnchor && menuAnchor.contains(e.target))) closeMenu(); }
   function closeMenu() { const m = $('#menu'); if (m) m.remove(); document.removeEventListener('pointerdown', outside); }
 
   function showResign() {
-    const c = Game.M.cur;
-    const cube = c ? c.cube.value : 1;
-    const s = openCard(`<h2>Resign</h2><p class="sub">${Game.isFriend ? esc(Game.oppName) + ' can accept or decline.' : 'The bot accepts only if your offer is at least what it expects to win.'}</p>
+    const M = Game.M;
+    if (!M || !M.cur || M.over) return;
+    const now = Game.canResignNow, fr = Game.isFriend, name = esc(Game.oppName);
+    const pts = (l) => { const n = Game.resignPoints(l); return `${n} point${n > 1 ? 's' : ''}`; };
+    const s = openCard(`<h2>Resign</h2><p class="sub">${fr ? name + ' can accept or decline.' : 'The bot accepts only if your offer is at least what it expects to win.'}</p>
+      <div class="rmnote" id="rsNote" ${now ? 'hidden' : ''}>You can offer to resign on your own turn, before you roll or while you move.</div>
       <div class="list">
-        <button class="histitem" data-l="1"><span class="grow"><span><b>Single game</b></span><span>${1 * cube} point${cube > 1 ? 's' : ''}</span></span></button>
-        <button class="histitem" data-l="2"><span class="grow"><span><b>Gammon</b></span><span>${2 * cube} points</span></span></button>
-        <button class="histitem" data-l="3"><span class="grow"><span><b>Backgammon</b></span><span>${3 * cube} points</span></span></button>
+        <button class="histitem" data-l="1" ${now ? '' : 'disabled'}><span class="grow"><span><b>Single game</b></span><span>${pts(1)}</span></span></button>
+        <button class="histitem" data-l="2" ${now ? '' : 'disabled'}><span class="grow"><span><b>Gammon</b></span><span>${pts(2)}</span></span></button>
+        <button class="histitem" data-l="3" ${now ? '' : 'disabled'}><span class="grow"><span><b>Backgammon</b></span><span>${pts(3)}</span></span></button>
       </div><div class="row" style="justify-content:flex-end"><button class="btnx" id="rsCancel">Keep playing</button></div>`);
+    // While the card is open: hold off auto-playing a forced move (so the turn isn't over before you can
+    // choose), and keep the options in step with whose turn it is.
+    Game.holdForResign(true);
+    const tick = setInterval(() => {
+      if (!s.isConnected) { clearInterval(tick); Game.holdForResign(false); return; }
+      const ok = Game.canResignNow;
+      s.querySelectorAll('[data-l]').forEach(b => { b.disabled = !ok; });
+      const n = s.querySelector('#rsNote'); if (n) n.hidden = ok;
+    }, 200);
     s.querySelectorAll('[data-l]').forEach(b => b.onclick = async () => {
-      s.querySelectorAll('button').forEach(x => x.disabled = true);
-      const ok = await Game.humanResign(+b.dataset.l);
-      closeCard();
+      clearInterval(tick);
+      const lvl = +b.dataset.l;
+      // a small waiting card; the game-over card replaces it if the offer is accepted
+      const wait = openCard(`<h2>Resigning</h2><p class="sub">${fr ? `Waiting for ${name} to accept or decline.` : 'Asking the bot…'}</p>
+        <div class="row" style="justify-content:space-between"><span class="loading"><span class="spin"></span>${fr ? 'Waiting' : 'Thinking'}</span>${fr ? '<button class="btnx" id="rsHide">Hide</button>' : ''}</div>`, { dismiss: false });
+      const hide = wait.querySelector('#rsHide'); if (hide) hide.onclick = () => closeCard();
+      const ok = await Game.humanResign(lvl);
+      Game.holdForResign(false);
+      if ($('#scrim') === wait) closeCard();
       if (ok === 'notnow') toast('You can resign on your own turn');
-      else if (!ok) toast(`${Game.oppName} declines your resignation`);
+      else if (ok === false) toast(`${Game.oppName} declines. Play on`);
     });
     $('#rsCancel').onclick = closeCard;
   }
@@ -332,9 +384,11 @@ const UI = (() => {
   function banner(html) {
     const t = $('#tutor');
     t.innerHTML = html; t.hidden = false;
+    document.getElementById('app').classList.add('tutoring');
+    relayout();
     return t;
   }
-  function hideBanner() { const t = $('#tutor'); t.hidden = true; t.innerHTML = ''; }
+  function hideBanner() { const t = $('#tutor'); if (t.hidden) return; t.hidden = true; t.innerHTML = ''; document.getElementById('app').classList.remove('tutoring'); relayout(); }
   function chipFor(loss) { const b = band(loss); return `<span class="chip ${b}">${BAND_LABEL[b]}</span>`; }
 
   function tutorMove(rec) {
@@ -395,10 +449,10 @@ const UI = (() => {
     });
   }
 
-  function botResigns(lvl, who) {
+  function botResigns(lvl, who, pts) {
     return new Promise(res => {
       const names = ['', 'a single game', 'a gammon', 'a backgammon'];
-      const s = openCard(`<h2>${esc(who || 'Bot')} resigns</h2><p class="sub">${esc(who || 'The bot')} offers to concede ${names[lvl]}.</p>
+      const s = openCard(`<h2>${esc(who || 'Bot')} resigns</h2><p class="sub">${esc(who || 'The bot')} offers to concede ${names[lvl]}${pts ? ` (${pts} point${pts > 1 ? 's' : ''})` : ''}. Accept to win ${pts ? 'those points' : 'the game'} now, or play on.</p>
         <div class="row" style="justify-content:flex-end"><button class="btnx" id="brNo">Play on</button><button class="btnx primary" id="brYes" autofocus>Accept</button></div>`, { dismiss: false });
       $('#brYes').onclick = () => { closeCard(); res(true); };
       $('#brNo').onclick = () => { closeCard(); res(false); };
@@ -448,6 +502,18 @@ const UI = (() => {
     </div>`;
   }
 
+  // the friend left on purpose (started something else)
+  function friendLeft(name) {
+    const el = $('#goRm');
+    if (el) { el.hidden = false; el.innerHTML = `${esc(name)} has left, so a rematch isn’t possible. Start a new game from New match.`; const b = $('#goNext'); if (b && Game.M && Game.M.over) b.disabled = true; return; }
+    if (Game.M && !Game.M.over) {
+      openCard(`<h2>${esc(name)} has left</h2><p class="sub">They started something else, so this match can’t carry on. You can review it or start a new one.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btnx" id="flReview">Review</button><button class="btnx primary" id="flNew" autofocus>New match</button></div>`, { dismiss: false });
+      $('#flReview').onclick = () => { closeCard(); const M = Game.M; Review.open(M, M.games.length > 1 ? 'all' : 0); };
+      $('#flNew').onclick = () => { closeCard(); showSetup(); };
+    } else toast(`${name} has left`);
+  }
+
   /* ---------- rematch ---------- */
   function rmDesc(M) { return `${M.matchTo ? M.matchTo + '-point match' : 'single game'}${M.cubeOn ? '' : ', no cube'}`; }
   function rematch() {
@@ -484,13 +550,24 @@ const UI = (() => {
     if (state === 'declined') { el.innerHTML = `${name} doesn’t want a rematch right now.`; if (btn) { btn.disabled = false; btn.textContent = 'Ask again'; } }
   }
 
+  /* ---------- board layout ---------- */
+  function idleBoard() { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, ...boardLayout() }); board.drawCube({ on: true, value: 1, owner: -1 }); }
+  function relayout() {
+    if (!board) return;
+    const L = boardLayout();
+    renderBar();
+    placeMenu();
+    if (L.slots !== board.slots || L.compact !== board.compact || (L.mid || 0) !== (board.mid || 0)) { if (Game.M && Game.M.cur) Game.redraw(); else idleBoard(); }
+    else board.size(L.px.w, L.px.h);
+  }
+
   /* ---------- boot ---------- */
   function init() {
     $('#btnMenu').innerHTML = ICON.menu;
     $('#btnReview').innerHTML = ICON.chart + '<span class="lt">Review</span>';
     $('.brand').insertAdjacentHTML('afterbegin', ICON.logo);
     $('#btnMenu').onclick = (e) => showMenu(e.currentTarget);
-    $('#btnReview').onclick = () => { if (Game.M && Game.M.opp === 'friend' && !Game.M.over && Game.phase !== 'over') { toast('Analysis opens when the game ends'); return; } if (Game.M) Review.open(Game.M, Game.M.games.length > 1 ? 'all' : 0); else { const h = Store.get('history', [])[0]; if (h) Review.open(h); else toast('Play a game first'); } };
+    $('#btnReview').onclick = () => { if (Game.M && Game.M.opp === 'friend' && !Game.M.over && Game.phase !== 'over' && !Game.M.friendLeft) { toast('Analysis opens when the game ends'); return; } if (Game.M) Review.open(Game.M, Game.M.games.length > 1 ? 'all' : 0); else { const h = Store.get('history', [])[0]; if (h) Review.open(h); else toast('Play a game first'); } };
     board = createBoard($('#board'), {
       canPick: (f) => Game.canPick(f),
       cantPick: () => { if (Game.phase === 'moving' && !Game.busy) toast('That checker can’t move'); },
@@ -505,35 +582,23 @@ const UI = (() => {
       sound: (k) => Sound.play(k)
     });
     Sound.on = Settings.sound;
-    Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver, rematch: rematchUI });
+    Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver, rematch: rematchUI, clearTransient: () => { hideBanner(); closeMenu(); }, friendLeft });
     document.addEventListener('keydown', (e) => {
       if ($('#scrim') || !$('#review').hidden || $('#menu')) { if (e.key === 'Escape') { closeMenu(); if (!$('#review').hidden) Review.back(); } return; }
       if (!$('#tutor').hidden) return;
       Game.key(e);
     });
     // initial board behind the setup card
-    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots(), compact: boardCompact() });
-    board.drawCube({ on: true, value: 1, owner: -1 });
+    idleBoard();
     update();
-    // re-orient the board when the screen shape changes (e.g. phone rotation)
-    let lastRot = board.rot, rt;
-    const onResize = () => {
-      clearTimeout(rt);
-      rt = setTimeout(function retry() {
-        const was = document.getElementById('app').classList.contains('portrait');
-        const r = boardRot();
-        const now = document.getElementById('app').classList.contains('portrait');
-        renderBar();
-        const sl = boardSlots();
-        if (r === lastRot && was === now && sl === board.slots) return;
-        if (Game.busy || (Game.M && ['opening', 'auto', 'botTurn', 'committing'].includes(Game.phase))) { rt = setTimeout(retry, 300); return; }
-        lastRot = r;
-        if (Game.M) Game.redraw();
-        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r, slots: sl, compact: boardCompact() }); board.drawCube({ on: true, value: 1, owner: -1 }); }
-      }, 150);
-    };
+    // Re-lay the board out whenever the screen changes shape (rotation, browser bars, split screen).
+    // Phones report rotation in several steps, so check again a little later as well.
+    let timers = [];
+    const onResize = () => { timers.forEach(clearTimeout); timers = [0, 120, 350, 800].map(ms => setTimeout(relayout, ms)); };
     window.addEventListener('resize', onResize);
-    if (window.ResizeObserver) new ResizeObserver(onResize).observe(document.querySelector('.boardbox'));
+    window.addEventListener('orientationchange', onResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+    if (window.ResizeObserver) new ResizeObserver(onResize).observe(document.querySelector('.stage'));
     const hot = window.claude && window.claude.hot;
     if (hot && hot.snapshot) hot.snapshot(() => ({ M: Game.M }));
     const start = (data) => {
@@ -567,5 +632,5 @@ const UI = (() => {
     el.hidden = false;
     el.onclick = (e) => { const x = e.target.closest('[data-b]'); if (x) Game.button(x.dataset.b); };
   }
-  return { init, toast, update, showSetup, closeCard, renderBar };
+  return { init, toast, update, showSetup, closeCard, renderBar, placeMenu };
 })();

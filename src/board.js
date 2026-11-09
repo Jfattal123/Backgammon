@@ -1,35 +1,47 @@
 /* ===================== BOARD (SVG) ===================== */
 // Board geometry. SLOTS = how many checkers a point shows before the stack squeezes up:
 // 5 is the classic look; short landscape screens use fewer (bigger checkers), tall screens more.
-const G = { F: 14, FV: 26, RAIL: 54, PW: 64, BAR: 58, TRAY: 66, CD: 58, MID: 100 };
-// compact frame (phones held upright): thinner rails, bar and tray so the points and checkers get more of the width
+const G = { FV: 26, PW: 64, TXT: 12 };
+// Two frames, same look:
+//  standard (laptops, tablets, phones on their side): left rail for the cube and pip counts, tray on the right
+//  compact  (phones held upright): no side rail (cube sits on the bar, pip counts in the tray) so the
+//           points and checkers get as much of the narrow screen as possible
+G.FRAMES = {
+  standard: { F: 14, RAIL: 54, BAR: 58, TRAY: 66, CD: 59, TIN: 50, SLAB: 42, BAROFF: 47, RX: 18, FV: 26 },
+  compact: { F: 6, RAIL: 0, BAR: 46, TRAY: 46, CD: 60, TIN: 38, SLAB: 30, BAROFF: 54, RX: 10, FV: 30 }
+};
+G.frameOf = (compact) => G.FRAMES[compact ? 'compact' : 'standard'];
+G.widthOf = (compact) => { const f = G.frameOf(compact); return 2 * f.F + f.RAIL + 12 * G.PW + f.BAR + f.TRAY; };
+G.midFor = (n) => n <= 4 ? 82 : 100;   // short boards get a slimmer middle strip
+G.heightOf = (compact, n, mid) => G.frameOf(compact).FV * 2 + 2 * n * G.frameOf(compact).CD + (mid || G.midFor(n));
+// Board text (point numbers, pip counts) is sized for the screen, not the board: about 10.5px however
+// big or small the board is drawn, within what the number strip can hold.
+G.setTextScale = function (pxPerUnit) { this.TXT = Math.max(11, Math.min(this.FV - 6, 10.5 / (pxPerUnit || 1))); };
 G.setFrame = function (compact) {
   this.COMPACT = !!compact;
-  // compact: edge-to-edge points, no side rail (cube and pips move to the bar and tray), checkers fill the point width
-  Object.assign(this, compact ? { F: 0, RAIL: 0, BAR: 46, TRAY: 36, CD: 62, TIN: 28, SLAB: 24, BAROFF: 54 } : { F: 14, RAIL: 54, BAR: 58, TRAY: 66, CD: 58, TIN: 52, SLAB: 44, BAROFF: 46 });
-  this.W = this.F + this.RAIL + 12 * this.PW + this.BAR + this.TRAY + this.F;
+  Object.assign(this, this.frameOf(compact));
+  this.W = this.widthOf(compact);
   this.FL = this.F + this.RAIL;                 // field left
   this.XR = this.FL + 6 * this.PW + this.BAR;   // right half start
   this.BARX = this.FL + 6 * this.PW + this.BAR / 2;
   this.TRAYX = this.XR + 6 * this.PW + this.TRAY / 2;
   this.RAILX = this.F + this.RAIL / 2;
 };
-G.setFrame(false);
-G.midFor = (n) => n <= 4 ? 82 : 100;   // short boards get a slimmer middle strip
-G.setSlots = function (n) {
-  this.SLOTS = n; this.MID = this.midFor(n);
+G.setSlots = function (n, mid) {
+  this.SLOTS = n; this.MID = mid || this.midFor(n);
   this.PL = n * this.CD;             // point length
   this.FH = 2 * this.PL + this.MID;
   this.H = this.FV * 2 + this.FH;
   this.MIDY = this.FV + this.FH / 2;
 };
-G.heightFor = (n) => G.FV * 2 + 2 * n * G.CD + G.midFor(n);
+G.setFrame(false);
 G.setSlots(5);
-// Pick the point length (checkers per point before stacks squeeze) for a w x h box.
-// Big screens keep the classic 5 (or longer if there is spare height). Small screens trade a little
-// checker size for natural proportions: 4 is fine, 3 only when there is no other way.
-G.bestSlots = function (w, h, maxN = 10) {
-  const px = (n) => this.CD * Math.min(w / this.W, h / this.heightFor(n));
+// Pick the point length (checkers per point before stacks squeeze) for a w x h box. Pure: does not
+// change the current geometry. Big screens keep the classic 5 (or longer if there is spare height).
+// Small screens trade a little checker size for natural proportions: 4 is fine, 3 only when there is no other way.
+G.bestSlots = function (w, h, maxN = 10, compact = false) {
+  const CD = this.frameOf(compact).CD, W = this.widthOf(compact);
+  const px = (n) => CD * Math.min(w / W, h / this.heightOf(compact, n));
   if (px(5) >= 40) { let best = 5; for (let n = 5; n <= maxN; n++) if (px(n) >= px(5) * 0.99) best = n; return best; }
   const pen = { 3: 0.62, 4: 0.84 };
   let best = 5, bs = -1;
@@ -103,8 +115,8 @@ function pipDots(v) {
 function checkerColors(p, humanLight) {
   const light = (p === 0) === humanLight;
   return light
-    ? { fill: 'url(#gLight)', rim: 'var(--chk-light-rim)', ring: 'rgba(0,0,0,.10)', slab: '#e9e4da', slabRim: '#b9b3a8', text: '#1a1d21' }
-    : { fill: 'url(#gDark)', rim: 'var(--chk-dark-rim)', ring: 'rgba(255,255,255,.08)', slab: '#2a2e33', slabRim: '#4a5058', text: '#f2efe9' };
+    ? { fill: 'url(#gLight)', rim: 'var(--chk-light-rim)', ring: 'rgba(0,0,0,.11)', ring2: 'rgba(255,255,255,.7)', slab: '#e9e4da', slabRim: '#b9b3a8', text: '#1a1d21' }
+    : { fill: 'url(#gDark)', rim: 'var(--chk-dark-rim)', ring: 'rgba(0,0,0,.45)', ring2: 'rgba(255,255,255,.07)', slab: '#2a2e33', slabRim: '#4a5058', text: '#f2efe9' };
 }
 function diceColors(p, humanLight) {
   const light = (p === 0) === humanLight;
@@ -118,40 +130,50 @@ function boardBaseSVG(flip, opts = {}) {
   s += `<defs>
     <radialGradient id="gLight" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f1ede6"/><stop offset="1" stop-color="#d9d3c8"/></radialGradient>
     <radialGradient id="gDark" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#4b5159"/><stop offset=".5" stop-color="#22262b"/><stop offset="1" stop-color="#121417"/></radialGradient>
-    <linearGradient id="gField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#25393f"/><stop offset=".5" stop-color="#20333a"/><stop offset="1" stop-color="#25393f"/></linearGradient>
-    <linearGradient id="gPtAt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#47767e"/><stop offset="1" stop-color="#355f67"/></linearGradient>
-    <linearGradient id="gPtAb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#47767e"/><stop offset="1" stop-color="#355f67"/></linearGradient>
-    <linearGradient id="gPtBt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6c4a8"/><stop offset="1" stop-color="#b9a585"/></linearGradient>
-    <linearGradient id="gPtBb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#d6c4a8"/><stop offset="1" stop-color="#b9a585"/></linearGradient>
+    <linearGradient id="gFrame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d2e32"/><stop offset="1" stop-color="#142124"/></linearGradient>
+    <linearGradient id="gField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#263c42"/><stop offset=".5" stop-color="#1f3338"/><stop offset="1" stop-color="#263c42"/></linearGradient>
+    <linearGradient id="gBar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#16252a"/><stop offset=".5" stop-color="#1d2f34"/><stop offset="1" stop-color="#16252a"/></linearGradient>
+    <linearGradient id="gPtAt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c7d85"/><stop offset="1" stop-color="#35606a"/></linearGradient>
+    <linearGradient id="gPtAb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4c7d85"/><stop offset="1" stop-color="#35606a"/></linearGradient>
+    <linearGradient id="gPtBt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dac9ad"/><stop offset="1" stop-color="#b7a383"/></linearGradient>
+    <linearGradient id="gPtBb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#dac9ad"/><stop offset="1" stop-color="#b7a383"/></linearGradient>
     <filter id="fShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2.5" stdDeviation="2.2" flood-color="#000" flood-opacity=".38"/></filter>
     <filter id="fLift" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="10" stdDeviation="7" flood-color="#000" flood-opacity=".42"/></filter>
     <marker id="mArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f2b84b"/></marker>
     <marker id="mArrowG" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5fd39b"/></marker>
   </defs>`;
-  s += `<rect x="0" y="0" width="${G.W}" height="${G.H}" rx="${G.COMPACT ? 6 : 18}" fill="var(--frame)"/>`;
-  // field halves
+  // frame, with a faint inner highlight so it reads as a raised edge
+  s += `<rect x="0" y="0" width="${G.W}" height="${G.H}" rx="${G.RX}" fill="url(#gFrame)"/>`;
+  s += `<rect x=".75" y=".75" width="${G.W - 1.5}" height="${G.H - 1.5}" rx="${G.RX - .75}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1.5"/>`;
+  // field halves (inset)
   const lx = g.mx(G.FL), rx = g.mx(G.XR);
   const hx = (x) => flip ? x - 6 * G.PW : x;
-  s += `<rect x="${hx(lx)}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="6" fill="url(#gField)"/>`;
-  s += `<rect x="${hx(rx)}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="6" fill="url(#gField)"/>`;
-  // bar
-  s += `<rect x="${g.mx(G.BARX) - G.BAR / 2 + 6}" y="${G.FV}" width="${G.BAR - 12}" height="${G.FH}" rx="6" fill="#1a292d"/>`;
-  // tray
+  for (const x0 of [hx(lx), hx(rx)]) {
+    s += `<rect x="${x0}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="5" fill="url(#gField)"/>`;
+  }
+  // bar, with a centre seam
+  const bx = g.mx(G.BARX);
+  s += `<rect x="${bx - G.BAR / 2 + 5}" y="${G.FV}" width="${G.BAR - 10}" height="${G.FH}" rx="5" fill="url(#gBar)"/>`;
+  s += `<line x1="${bx}" y1="${G.FV + 6}" x2="${bx}" y2="${G.H - G.FV - 6}" stroke="rgba(0,0,0,.28)" stroke-width="1.5"/>`;
+  // bear-off trays
   const tx = g.mx(G.TRAYX) - G.TIN / 2;
-  s += `<rect x="${tx}" y="${G.FV}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
-  s += `<rect x="${tx}" y="${G.MIDY + 8}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
-  // points
+  for (const y0 of [G.FV, G.MIDY + 6]) s += `<rect x="${tx}" y="${y0}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="#111d20" stroke="rgba(0,0,0,.25)" stroke-width="1"/>`;
+  // points, with softened tips
   for (let i = 0; i < 24; i++) {
-    const x = g.ptX(i), top = g.isTop(i);
-    const y0 = top ? G.FV : G.H - G.FV, y1 = top ? G.FV + G.PL - 8 : G.H - G.FV - G.PL + 8;
+    const x = g.ptX(i), top = g.isTop(i), dir = top ? 1 : -1;
+    const y0 = top ? G.FV : G.H - G.FV, y1 = top ? G.FV + G.PL - 6 : G.H - G.FV - G.PL + 6;
     const c = i % 2 === 0 ? (top ? 'url(#gPtAt)' : 'url(#gPtAb)') : (top ? 'url(#gPtBt)' : 'url(#gPtBb)');
-    s += `<path d="M${x - G.PW / 2 + 3},${y0} L${x},${y1} L${x + G.PW / 2 - 3},${y0} Z" fill="${c}"/>`;
+    const hw = G.PW / 2 - 4;
+    s += `<path d="M${x - hw},${y0} L${x - 3},${y1 - dir * 7} Q${x},${y1 + dir} ${x + 3},${y1 - dir * 7} L${x + hw},${y0} Z" fill="${c}"/>`;
     if (opts.numbers !== false) {
-      const ny = top ? G.FV - 8 : G.H - G.FV + 17;
-      const ry = top ? G.FV / 2 : G.H - G.FV / 2;
-      s += ROT ? `<text class="ptnum" x="${x}" y="${ry}" text-anchor="middle" dominant-baseline="central"${trT(x, ry)}>${i + 1}</text>`
-        : `<text class="ptnum" x="${x}" y="${G.COMPACT ? (top ? G.FV - 6 : G.H - G.FV + 19) : ny}" text-anchor="middle"${G.COMPACT ? ' style="font-size:16px"' : ''}>${i + 1}</text>`;
+      const fs = G.TXT;
+      const ny = top ? G.FV / 2 + fs * 0.36 : G.H - G.FV / 2 + fs * 0.36;
+      s += `<text class="ptnum" x="${x}" y="${ny}" text-anchor="middle" style="font-size:${fs}px">${i + 1}</text>`;
     }
+  }
+  // field edges: a soft inner shadow over the points
+  for (const x0 of [hx(lx), hx(rx)]) {
+    s += `<rect x="${x0 + .75}" y="${G.FV + .75}" width="${6 * G.PW - 1.5}" height="${G.FH - 1.5}" rx="5" fill="none" stroke="rgba(0,0,0,.32)" stroke-width="1.5"/>`;
   }
   return s;
 }
@@ -162,7 +184,8 @@ function checkerSVG(id, p, humanLight, x, y, inTray) {
   return `<g class="chk${inTray ? ' tray' : ''}" data-id="${id}" data-p="${p}" transform="translate(${x},${y})">
     <g class="disc" ${inTray ? 'style="display:none"' : ''} filter="url(#fShadow)">
       <circle r="${r}" fill="${c.fill}" stroke="${c.rim}" stroke-width="1.5"/>
-      <circle r="${r - 9}" fill="none" stroke="${c.ring}" stroke-width="2"/>
+      <circle r="${r * 0.66}" fill="none" stroke="${c.ring}" stroke-width="1.6"/>
+      <circle r="${r * 0.66 - 1.6}" fill="none" stroke="${c.ring2}" stroke-width="1"/>
     </g>
     <rect class="slab" ${inTray ? '' : 'style="display:none"'} x="${-G.SLAB / 2}" y="-6" width="${G.SLAB}" height="12" rx="3" fill="${c.slab}" stroke="${c.slabRim}" stroke-width="1"/>
   </g>`;
@@ -207,8 +230,8 @@ function arrowPath(g, fromLoc, toLoc, fromK, toK) {
 // Full static board snapshot as SVG string (review / previews).
 // st: {b:[b0,b1], dice:[d0,d1]|null, diceP, cube, owner, arrows:[{p, pairs, color}] }
 function staticBoardSVG(st, o) {
-  const savedRot = ROT, savedSlots = G.SLOTS, savedFrame = G.COMPACT; ROT = 0; G.setFrame(false); G.setSlots(5);
-  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setFrame(savedFrame); G.setSlots(savedSlots); }
+  const savedRot = ROT, savedSlots = G.SLOTS, savedMid = G.MID, savedFrame = G.COMPACT, savedTxt = G.TXT; ROT = 0; G.setFrame(false); G.setSlots(5); G.TXT = 13;
+  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setFrame(savedFrame); G.setSlots(savedSlots, savedMid); G.TXT = savedTxt; }
 }
 function staticBoardSVG0(st, o) {
   const flip = !!o.flip, humanLight = o.humanLight !== false;
@@ -237,8 +260,8 @@ function staticBoardSVG0(st, o) {
   }
   if (st.cubeOn) { const cp = g.cubePos(st.owner == null ? -1 : st.owner); s += cubeSVG(cp.x, cp.y, st.owner === -1 || st.owner == null ? (st.cube > 1 ? st.cube : 64) : st.cube); }
   // pip counts
-  s += `<text x="${g.mx(G.RAILX)}" y="${G.H - G.FV - 70}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[0]}</text>`;
-  s += `<text x="${g.mx(G.RAILX)}" y="${G.FV + 78}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[1]}</text>`;
+  s += `<text x="${g.mx(G.RAILX)}" y="${G.H - G.FV - 118}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[0]}</text>`;
+  s += `<text x="${g.mx(G.RAILX)}" y="${G.FV + 132}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[1]}</text>`;
   if (st.arrows) for (const ar of st.arrows) s += arrowsSVG(g, st.b, ar.p, ar.pairs, ar.color);
   s += `</svg>`;
   return s;
@@ -266,7 +289,7 @@ function arrowsSVG(g, bb, p, pairs, color) {
 
 /* ---------- Interactive board ---------- */
 function createBoard(svg, cb) {
-  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5, compact = false;
+  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5, compact = false, mid = 0;
   let g = geo(false);
   const stacks = new Map(); // locKey -> [ids]
   const where = new Map();  // id -> loc
@@ -279,10 +302,17 @@ function createBoard(svg, cb) {
   let dests = null; // Map dest -> path for current drag/selection
   let marked = new Set();
   let reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Everything the board shows is remembered, so a rebuild (rotation, resize, settings) redraws it exactly.
+  // `gen` changes on every rebuild: animations started before it stop touching the new board.
+  let gen = 0, lastBtns = [], statusTxt = ['', ''], arrowsHtml = '';
 
 
   let root = svg;
+  // explicit pixel size: no reliance on how each browser sizes an SVG from its viewBox
+  function size(w, h) { svg.style.width = Math.max(1, Math.floor(w)) + 'px'; svg.style.height = Math.max(1, Math.floor(h)) + 'px'; }
   function build() {
+    gen++;
+    selFrom = null; dests = null; drag = null;
     ROT = rot;
     const eflip = rot ? !flip : flip;
     g = geo(eflip);
@@ -357,20 +387,23 @@ function createBoard(svg, cb) {
       if (!ids.length) continue;
       const tp = g.stackPos({ t: 'off', p }, ids.length - 1, ids.length);
       const ty = p === 0 ? tp.y - 22 : tp.y + 22;
-      s += `<text x="${tp.x}" y="${ty}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="var(--board-text)" style="pointer-events:none;font-family:var(--font-num)"${trT(tp.x, ty)}>${ids.length}</text>`;
+      s += `<text x="${tp.x}" y="${ty}" text-anchor="middle" dominant-baseline="central" font-size="${Math.min(G.TRAY * 0.42, G.TXT * 1.05)}" font-weight="700" fill="var(--board-text)" style="pointer-events:none;font-family:var(--font-num)"${trT(tp.x, ty)}>${ids.length}</text>`;
     }
     cg.innerHTML = s;
     if (showPips && cb.pips) {
       const pp = cb.pips();
       const rx = g.mx(G.RAILX);
-      const pipTxt = (y, v, lblDy) => ROT
-        ? `<text x="${rx}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)"${trT(rx, y)}>${v} <tspan font-size="9" opacity=".7" letter-spacing="1">PIPS</tspan></text>`
-        : `<text x="${rx}" y="${y}" text-anchor="middle" font-size="13" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text><text x="${rx}" y="${y + lblDy}" text-anchor="middle" font-size="9" letter-spacing="1" fill="var(--board-text)" opacity=".7">PIPS</text>`;
+      const fv = Math.min(19, G.TXT * 1.12), fl = Math.min(12, G.TXT * 0.72);
+      const pipTxt = (y, v, lblDy) => `<text x="${rx}" y="${y}" text-anchor="middle" font-size="${fv}" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text><text x="${rx}" y="${y + lblDy * fl / 9}" text-anchor="middle" font-size="${fl}" letter-spacing="1" fill="var(--board-text)" opacity=".7">PIPS</text>`;
       if (G.COMPACT) {
-        const tx = g.mx(G.TRAYX), t = (y, v) => `<text x="${tx}" y="${y}" text-anchor="middle" font-size="16" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text>`;
-        layers.pips.innerHTML = pp ? t(G.MIDY + 30, pp[0]) + t(G.MIDY - 18, pp[1]) : '';
+        // compact: in the tray, beside the middle (yours below, theirs above)
+        const fv = Math.min(G.TRAY * 0.5, G.TXT), fl = Math.min(11, fv * 0.55);
+        const tx = g.mx(G.TRAYX), t = (y, v) => `<text x="${tx}" y="${y}" text-anchor="middle" font-size="${fv}" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text>`;
+        const lbl = (y) => `<text x="${tx}" y="${y}" text-anchor="middle" font-size="${fl}" letter-spacing=".5" fill="var(--board-text)" opacity=".7">PIPS</text>`;
+        layers.pips.innerHTML = pp ? t(G.MIDY + 8 + fv, pp[0]) + lbl(G.MIDY + 10 + fv + fl) + t(G.MIDY - 8 - fl - 2, pp[1]) + lbl(G.MIDY - 6) : '';
       } else
-      layers.pips.innerHTML = pp ? pipTxt(G.H - G.FV - 70, pp[0], -16) + pipTxt(G.FV + 78, pp[1], 16) : '';
+      // clear of an owned cube (and its Double label) at the rail ends and of the centred cube
+      layers.pips.innerHTML = pp ? pipTxt(G.H - G.FV - 118, pp[0], -16) + pipTxt(G.FV + 132, pp[1], 16) : '';
     } else layers.pips.innerHTML = '';
   }
 
@@ -384,13 +417,16 @@ function createBoard(svg, cb) {
     const el = els.get(id);
     const from = posOf.get(id) || pt;
     dur = reduceMotion ? 0 : dur * speed;
+    if (!el) return Promise.resolve();
     if (dur <= 0) { setXY(id, pt.x, pt.y); return Promise.resolve(); }
     if (lift) layers.drag.appendChild(el);
     const disc = el.querySelector('.disc');
     if (lift && disc) disc.setAttribute('filter', 'url(#fLift)');
+    const my = gen;
     return new Promise(res => {
       const t0 = performance.now();
       function step(now) {
+        if (my !== gen) return res();   // the board was rebuilt underneath us: stop
         const t = Math.min(1, (now - t0) / dur), e = ease(t);
         const x = from.x + (pt.x - from.x) * e, y = from.y + (pt.y - from.y) * e;
         let sc = lift ? 1 + 0.09 * Math.sin(Math.PI * t) : 1;
@@ -416,6 +452,7 @@ function createBoard(svg, cb) {
 
   // Move top checker of player p from index `from` to `to` (-1 off). hit handled if flagged.
   async function moveChecker(p, from, to, hit, opts = {}) {
+    const my = gen;
     const fl = locOf(p, from), tl = locOf(p, to);
     const fk = locKey(fl), tk = locKey(tl);
     const fst = stacks.get(fk) || [];
@@ -443,11 +480,13 @@ function createBoard(svg, cb) {
     proms.push(main);
     if (hitId != null) {
       const bl = { t: 'bar', p: 1 - p };
-      proms.push(new Promise(r => setTimeout(r, dur * speed * 0.55)).then(() => { cb.sound && cb.sound('hit'); return animateTo(hitId, g.stackPos(bl, stacks.get(locKey(bl)).length - 1, stacks.get(locKey(bl)).length), 300, true); }));
+      proms.push(new Promise(r => setTimeout(r, dur * speed * 0.55)).then(() => { if (my !== gen) return; cb.sound && cb.sound('hit'); return animateTo(hitId, g.stackPos(bl, stacks.get(locKey(bl)).length - 1, stacks.get(locKey(bl)).length), 300, true); }));
     }
     await Promise.all(proms);
+    if (my !== gen) return id;   // rebuilt mid-move: the new board already shows the result
     // relayout affected stacks (compression)
     await Promise.all([layoutStack(fk, fl, true), layoutStack(tk, tl, true), hitId != null ? layoutStack(locKey({ t: 'bar', p: 1 - p }), { t: 'bar', p: 1 - p }, true) : null]);
+    if (my !== gen) return id;
     orderZ();
     updateCounts();
     return id;
@@ -455,6 +494,7 @@ function createBoard(svg, cb) {
 
   // Reverse of moveChecker (for undo)
   async function unmoveChecker(p, from, to, hit) {
+    const my = gen;
     const fl = locOf(p, from), tl = locOf(p, to);
     const fk = locKey(fl), tk = locKey(tl);
     const id = (stacks.get(tk) || []).pop();
@@ -473,7 +513,9 @@ function createBoard(svg, cb) {
     }
     cb.sound && cb.sound('place');
     await Promise.all(proms);
+    if (my !== gen) return;
     await Promise.all([layoutStack(fk, fl, true), layoutStack(tk, tl, true)]);
+    if (my !== gen) return;
     orderZ();
     updateCounts();
   }
@@ -482,8 +524,10 @@ function createBoard(svg, cb) {
   let diceState = null; // {p, vals, used:[bool], order:[i,j]}
   function drawDice(st, dieRot) {
     diceState = st;
-    if (cb.barDice && !dieRot) cb.barDice(st);
+    if (cb.barDice) cb.barDice(st);
     if (!st) { layers.dice.innerHTML = ''; return; }
+    // phones held upright show your dice in the big control bar under the board, so not twice
+    if (!st.single && st.p === 0 && cb.isPortrait && cb.isPortrait()) { layers.dice.innerHTML = ''; return; }
     const c = g.diceCenter(st.p), col = diceColors(st.p, humanLight);
     let s = '';
     const vals = st.vals;
@@ -517,12 +561,12 @@ function createBoard(svg, cb) {
     dur = reduceMotion ? 0 : dur;
     cb.sound && cb.sound('dice');
     if (dur > 0) {
-      const t0 = performance.now();
+      const t0 = performance.now(), my = gen;
       await new Promise(res => {
         let last = 0;
         function step(now) {
           const t = (now - t0) / dur;
-          if (t >= 1) return res();
+          if (t >= 1 || my !== gen) return res();
           if (now - last > 55) {
             last = now;
             const fake = st.single
@@ -566,9 +610,9 @@ function createBoard(svg, cb) {
     if (animate && prevPos && !reduceMotion && (prevPos.x !== pos.x || prevPos.y !== pos.y)) {
       const w = layers.cube.querySelector('.cubewrap');
       const from = prevPos;
-      const t0 = performance.now(), dur = 300 * speed;
+      const t0 = performance.now(), dur = 300 * speed, my = gen;
       w.setAttribute('transform', `translate(${from.x},${from.y})${trG()}`);
-      (function step(now) { const t = Math.min(1, (now - t0) / dur), e = ease(t); w.setAttribute('transform', `translate(${from.x + (pos.x - from.x) * e},${from.y + (pos.y - from.y) * e})${trG()}`); if (t < 1) requestAnimationFrame(step); })(t0);
+      (function step(now) { if (my !== gen) return; const t = Math.min(1, (now - t0) / dur), e = ease(t); w.setAttribute('transform', `translate(${from.x + (pos.x - from.x) * e},${from.y + (pos.y - from.y) * e})${trG()}`); if (t < 1) requestAnimationFrame(step); })(t0);
     }
     cubeState.pos = pos;
   }
@@ -576,6 +620,7 @@ function createBoard(svg, cb) {
   /* ---- buttons ---- */
   // btns: [{id, label, kind:'primary'|'accent'|'ghost', side:0|1, slot:'left'|'right'|'center'|'l2'|'r2', w}]
   function drawButtons(btns) {
+    lastBtns = btns || [];
     let s = '';
     // portrait: large HTML buttons below the board instead of tiny in-board ones
     if (cb.htmlButtons) {
@@ -607,6 +652,8 @@ function createBoard(svg, cb) {
 
   // status text in a half (e.g., thinking)
   function drawStatus(side, text) {
+    statusTxt[side] = text || '';
+    if (!text && statusTxt[1 - side]) { const o = 1 - side; statusTxt[side] = ''; return drawStatus(o, statusTxt[o]); }
     let el = svg.querySelector('#lyStatus');
     if (!el) { el = document.createElementNS(SVGNS, 'g'); el.id = 'lyStatus'; layers.btn.before(el); }
     if (!text) { el.innerHTML = ''; return; }
@@ -624,7 +671,7 @@ function createBoard(svg, cb) {
       const loc = locOf(0, d);
       if (loc.t === 'off') {
         const x = g.mx(G.TRAYX), y = G.MIDY + 8 + (G.FH / 2 - 8) / 2;
-        s += `<rect x="${x - G.TIN / 2}" y="${G.MIDY + 8}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
+        s += `<rect x="${x - G.TIN / 2}" y="${G.MIDY + 6}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
         continue;
       }
       const k = locKey(loc), n = (stacks.get(k) || []).length;
@@ -648,7 +695,7 @@ function createBoard(svg, cb) {
   }
   function setMarked(ids) { marked.forEach(id => mark(id, false)); marked = new Set(ids || []); marked.forEach(id => mark(id, true)); }
 
-  function drawArrows(html) { layers.arrows.innerHTML = html || ''; }
+  function drawArrows(html) { arrowsHtml = html || ''; layers.arrows.innerHTML = arrowsHtml; }
   function arrowsFor(bb, p, pairs, color) { return arrowsSVG(g, bb, p, pairs, color); }
 
   /* ---- input ---- */
@@ -765,9 +812,24 @@ function createBoard(svg, cb) {
 
   build();
   return {
-    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; if (o.compact != null) compact = !!o.compact; } G.setFrame(compact); G.setSlots(slots); build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
+    rebuild(b, o) {
+      if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; if (o.compact != null) compact = !!o.compact; mid = o.mid || 0; }
+      G.setFrame(compact); G.setSlots(slots, mid);
+      if (o && o.px) G.setTextScale(o.px.w / G.W);
+      build(); setPositions(b);
+      if (cubeState) drawCube(cubeState);
+      drawDice(diceState);
+      drawButtons(lastBtns);
+      statusTxt.forEach((t, sd) => { if (t) drawStatus(sd, t); });
+      layers.arrows.innerHTML = arrowsHtml;
+      if (o && o.px) size(o.px.w, o.px.h);
+    },
+    size,
     get rot() { return rot; },
     get slots() { return slots; },
+    get compact() { return compact; },
+    get mid() { return mid; },
+    get aspect() { return G.W / G.H; },
     toScreen(x, y) { const m = root.getScreenCTM(); return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }; },
     setPositions, moveChecker, unmoveChecker, drawDice, rollDice, drawCube, drawButtons, drawStatus, showDests, clearDests, select,
     setInteractive(v) { interactive = v; if (!v) { selFrom = null; clearDests(); } },

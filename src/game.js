@@ -207,6 +207,18 @@ const Game = (() => {
   let lastBotIds = [];
   let resignOffered = 0;
   let pendingRecord = null; // move record in progress (tutor first attempt)
+  // Every new match, game, resume or game end bumps the epoch. Long-running turn flows (bot thinking,
+  // waiting for a friend, animations) note the epoch when they start and stop if it has moved on, so a
+  // flow from a finished or abandoned game can never touch the current one.
+  let epoch = 0;
+  let resignWanted = false; // a resignation offer is waiting for the dice to land: don't auto-play this turn
+  const stale = (ep) => ep !== epoch;
+  // clear everything belonging to a turn in progress (new game, new match, resume)
+  function resetTurnState() {
+    busy = false; turnInfo = null; partial = []; rem = []; pendingRecord = null; pendingCube = null;
+    if (ui._cubeResolve) ui._cubeResolve = null;
+    ui.clearTransient && ui.clearTransient();
+  }
   const ui = {}; // hooks set by UI layer
 
   const cur = () => M && M.cur;
@@ -312,6 +324,7 @@ const Game = (() => {
 
   /* ---------- match lifecycle ---------- */
   function newMatch(opts) {
+    epoch++;
     M = {
       id: 'm' + Date.now().toString(36), created: Date.now(), mode: opts.mode, matchTo: opts.matchTo, cubeOn: opts.cubeOn,
       jacoby: opts.jacoby, level: opts.level, score: [0, 0], crawfordUsed: false, games: [], cur: null, over: false, winner: null,
@@ -321,6 +334,8 @@ const Game = (() => {
     startGame();
   }
   function startGame() {
+    epoch++;
+    resetTurnState();
     const g = { no: M.games.length + 1, startScore: M.score.slice(), crawford: false, recs: [], result: null };
     if (M.matchTo && M.cubeOn && !M.crawfordUsed && (M.score[0] === M.matchTo - 1 || M.score[1] === M.matchTo - 1)) { g.crawford = true; M.crawfordUsed = true; }
     M.games.push(g);
@@ -336,7 +351,7 @@ const Game = (() => {
   function render(full) {
     const c = cur();
     board.setSpeed(SPEEDS[Settings.speed] || 1);
-    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots(), compact: boardCompact() });
+    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, ...boardLayout() });
     board.drawCube({ on: M.cubeOn && !game().crawford, value: c.cube.value, owner: c.cube.owner });
     board.drawDice(null);
     board.drawButtons([]);
@@ -346,6 +361,7 @@ const Game = (() => {
 
   async function openingRoll() {
     if (friend()) return friendOpening();
+    const ep = epoch;
     phase = 'opening';
     busy = true;
     let a, b;
@@ -353,8 +369,10 @@ const Game = (() => {
       a = rollDie(); b = rollDie();
       await board.rollDice({ single: [[0, a], [1, b]] }, Settings.diceAnim ? 320 : 0);
       if (a === b) { ui.toast && ui.toast(`Both rolled ${a}. Rolling again`); await sleep(650); }
+      if (stale(ep)) { busy = false; return; }
     } while (a === b);
     await sleep(420);
+    if (stale(ep)) { busy = false; return; }
     const p = a > b ? 0 : 1;
     const dice = p === 0 ? [a, b] : [b, a];
     cur().opening = false;
@@ -399,18 +417,21 @@ const Game = (() => {
       const rec = { k: 'cube', p: 0, doubler: 0, action: 'nodouble', b: clone(cur().b), ctx: ctxFor(0) };
       game().recs.push(rec);
       if (M.mode === 'tutor') {
+        const ep = epoch;
         const a = await pendingCube;
         await analyseCube(rec, a);
+        if (stale(ep)) return;
         if (rec.loss != null && tutorFlag(rec.loss)) {
           phase = 'tutor';
           const choice = await ui.tutorCube(rec, 'nodouble');
+          if (stale(ep)) return;
           phase = 'rolling';
           if (choice === 'switch') { rec.tutorSwitched = true; return doDouble(true); }
         }
       } else if (pendingCube) pendingCube.then(a => analyseCube(rec, a)).catch(() => { });
     }
     const d = [rollDie(), rollDie()];
-    if (friend()) Net.send({ t: 'roll', d });
+    if (friend()) { const c = cur(); c.turn = 0; c.dice = d; save(); Net.send({ t: 'roll', d }); }
     await humanRolled(d, false);
   }
 
@@ -430,26 +451,31 @@ const Game = (() => {
       // shut out completely (no roll at all could move): skip straight on.
       // Otherwise show the roll so it is clear what was rolled, then pass the turn.
       if (!opening && !shutOut(me, opp)) {
+        const ep = epoch;
         busy = true;
         await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0);
         ui.toast && ui.toast('No legal move with ' + dice.join('-'));
         await sleep(1100);
         busy = false;
+        if (stale(ep)) return;
       }
       return commitHuman(true);
     }
-    if (!opening) { busy = true; await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0); busy = false; }
+    const ep = epoch;
+    if (!opening) { busy = true; await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0); busy = false; if (stale(ep)) return; }
     else board.drawDice(diceView(dice));
     save();
     ui.update && ui.update();
-    if (turnInfo.finals.size === 1 && Settings.autoForced) {
+    if (turnInfo.finals.size === 1 && Settings.autoForced && !resignWanted) {
       const seq = [...turnInfo.finals.values()][0];
       phase = 'auto';
       await sleep(250);
+      if (stale(ep)) return;
       busy = true;
-      for (const s of seq) await playStep(s.from, s.die, true);
+      for (const s of seq) { await playStep(s.from, s.die, true); if (stale(ep)) { busy = false; return; } }
       busy = false;
       await sleep(200);
+      if (stale(ep)) return;
       return commitHuman(true);
     }
     board.setInteractive(true);
@@ -572,6 +598,7 @@ const Game = (() => {
   function tutorFlag(loss) { return Settings.tutorAny ? loss > 0.001 : loss >= SKILL.doubtful; }
 
   async function commitHuman(forced) {
+    const ep = epoch;
     phase = 'committing';
     board.setInteractive(false);
     board.drawButtons([]);
@@ -584,10 +611,12 @@ const Game = (() => {
       board.drawStatus(0, 'Checking your move');
       await analyseMove(rec, null, true);
       board.drawStatus(0, '');
+      if (stale(ep)) return;
       rec.tutorDone = true;
       if (rec.an && tutorFlag(rec.an.loss)) {
         const choice = await ui.tutorMove(rec);
         board.drawArrows('');
+        if (stale(ep)) return;
         if (choice === 'retry') {
           if (partial.length) await undoAll();
           rec.retried = true;
@@ -616,6 +645,7 @@ const Game = (() => {
     if (checkWin(0)) return;
     save();
     await sleep(120);
+    if (stale(ep)) return;
     if (friend()) friendTurn(); else botTurn();
   }
   // play gnubg-style pairs for the human (used for tutor "best" / "keep")
@@ -648,45 +678,77 @@ const Game = (() => {
 
   async function doDouble(fromTutor) {
     if (!fromTutor && phase !== 'preroll') return;
+    const ep = epoch;
     phase = 'doubling';
     board.drawButtons([]);
     drawCubeNow(false);
+    if (friend()) {
+      // no need to wait for the analysis before offering: it is only for the review
+      const c = cur();
+      const rec = { k: 'cube', p: 0, doubler: 0, action: 'double', b: clone(c.b), ctx: ctxFor(0) };
+      game().recs.push(rec);
+      const pc = pendingCube;
+      if (pc) pc.then(a => analyseCube(rec, a)).catch(() => { });
+      Sound.play('cube');
+      c.offer = { k: 'dbl' };
+      Net.send({ t: 'dbl' });
+      save();
+      return awaitDoubleAnswer(null, pc);
+    }
     const a = await pendingCube;
+    if (stale(ep)) return;
     const rec = { k: 'cube', p: 0, doubler: 0, action: 'double', b: clone(cur().b), ctx: ctxFor(0) };
     await analyseCube(rec, a);
+    if (stale(ep)) return;
     if (!fromTutor) {
       game().recs.push(rec);
       if (M.mode === 'tutor' && rec.loss != null && tutorFlag(rec.loss)) {
         phase = 'tutor';
         const choice = await ui.tutorCube(rec, 'double');
+        if (stale(ep)) return;
         phase = 'doubling';
         if (choice === 'switch') { rec.tutorSwitched = true; return doRoll(true); }
       }
     }
-    phase = 'cubeOffer';
     const c = cur();
     Sound.play('cube');
+    phase = 'cubeOffer';
     board.drawCube({ on: true, value: c.cube.value, owner: c.cube.owner, offeredTo: 1, prev: null }, true);
-    let take;
-    if (friend()) {
-      Net.send({ t: 'dbl' });
-      board.drawStatus(1, `${oppName()} is deciding`);
-      let act;
-      do { act = await Net.next(); } while (act.t !== 'take' && act.t !== 'pass');
-      take = act.t === 'take';
-    } else {
-      board.drawStatus(1, 'Considering…');
-      await sleep(500);
-      // bot decides: take if doubler's equity when taken < when passed
-      take = rec.an ? rec.an.dt < rec.an.dp : true;
+    board.drawStatus(1, 'Considering…');
+    await sleep(500);
+    if (stale(ep)) return;
+    // bot decides: take if doubler's equity when taken < when passed
+    const take = rec.an ? rec.an.dt < rec.an.dp : true;
+    return afterDoubleAnswer(take, a);
+  }
+  // You doubled your friend: wait for take or pass (they may also resign instead of answering).
+  async function awaitDoubleAnswer(a, pc) {
+    const ep = epoch, c = cur();
+    phase = 'cubeOffer';
+    board.drawCube({ on: true, value: c.cube.value, owner: c.cube.owner, offeredTo: 1, prev: null }, true);
+    board.drawStatus(1, `${oppName()} is deciding`);
+    let act;
+    while (true) {
+      act = await Net.next();
+      if (stale(ep)) return;
+      if (act.t === 'take' || act.t === 'pass') break;
+      if (act.t === 'resign') { if (await answerResign(act.l)) return; board.drawStatus(1, `${oppName()} is deciding`); }
     }
+    c.offer = null;
+    if (!a) { try { a = await (pc || cubeCall(0, ctxFor(0))); } catch (e) { a = null; } if (stale(ep)) return; }
+    return afterDoubleAnswer(act.t === 'take', a);
+  }
+  async function afterDoubleAnswer(take, a) {
+    const ep = epoch, c = cur();
     const trec = { k: 'take', p: 1, doubler: 0, action: take ? 'take' : 'pass', b: clone(c.b), ctx: ctxFor(0) };
-    await analyseCube(trec, a);
+    if (a) await analyseCube(trec, a);
+    if (stale(ep)) return;
     game().recs.push(trec);
     board.drawStatus(1, '');
     if (!take) {
       ui.toast && ui.toast(`${oppName()} passes`);
       await sleep(500);
+      if (stale(ep)) return;
       return endGame(0, c.cube.value, 'pass');
     }
     ui.toast && ui.toast(`${oppName()} takes`);
@@ -695,13 +757,15 @@ const Game = (() => {
     save();
     ui.update && ui.update();
     await sleep(350);
+    if (stale(ep)) return;
     const d = [rollDie(), rollDie()];
-    if (friend()) Net.send({ t: 'roll', d });
+    if (friend()) { c.turn = 0; c.dice = d; save(); Net.send({ t: 'roll', d }); }
     await humanRolled(d, false);
   }
 
   /* ---------- bot turn ---------- */
   async function botTurn() {
+    const ep = epoch;
     phase = 'botTurn';
     const c = cur();
     c.turn = 1; c.dice = null;
@@ -711,21 +775,24 @@ const Game = (() => {
     let ca = null;
     if (canDouble(1)) {
       ca = await cubeCall(1, ctxFor(1), true);
+      if (stale(ep)) return;
       const rec = { k: 'cube', p: 1, doubler: 1, action: 'nodouble', b: clone(c.b), ctx: ctxFor(1) };
       const doubles = [0, 1, 5, 7, 8, 16, 17, 18, 19, 20].includes(ca.cd);
       rec.action = doubles ? 'double' : 'nodouble';
       await analyseCube(rec, ca);
+      if (stale(ep)) return;
       game().recs.push(rec);
       if (doubles) {
         const res = await humanCubeResponse(ca);
-        if (res === 'pass') return;
+        if (res !== 'take' || stale(ep)) return;
       }
     }
     // the bot resigns only when winning has become mathematically impossible
     const lvl = certainLoss(c.b[1], c.b[0]);
     if (lvl && lvl !== resignOffered) {
       resignOffered = lvl;
-      const ok = await ui.botResigns(lvl);
+      const ok = await ui.botResigns(lvl, 'Bot', lvl * c.cube.value);
+      if (stale(ep)) return;
       if (ok) return endGame(0, lvl, 'resign');
     }
     const d = [rollDie(), rollDie()];
@@ -775,8 +842,9 @@ const Game = (() => {
     }
     return turns;
   }
+  // The other side (bot or friend) has doubled you: take or pass. Returns 'take', 'pass' or null if the game moved on.
   async function humanCubeResponse(ca) {
-    const c = cur();
+    const ep = epoch, c = cur();
     phase = 'cubeOffer';
     Sound.play('cube');
     board.drawCube({ on: true, value: c.cube.value, owner: c.cube.owner, offeredTo: 0 }, true);
@@ -788,12 +856,15 @@ const Game = (() => {
       ]);
       ui.toast && ui.toast(`${oppName()} doubles to ${c.cube.value * 2}`);
     });
+    if (stale(ep)) return null;
     board.drawButtons([]);
     const rec = { k: 'take', p: 0, doubler: 1, action: choice, b: clone(c.b), ctx: ctxFor(1) };
     await analyseCube(rec, ca);
+    if (stale(ep)) return null;
     let final = choice;
     if (!friend() && M.mode === 'tutor' && rec.loss != null && tutorFlag(rec.loss)) {
       const t = await ui.tutorCube(rec, choice);
+      if (stale(ep)) return null;
       if (t === 'switch') { final = choice === 'take' ? 'pass' : 'take'; rec.tutorSwitched = true; }
     }
     game().recs.push(rec);
@@ -804,20 +875,24 @@ const Game = (() => {
     save();
     ui.update && ui.update();
     await sleep(250);
+    if (stale(ep)) return null;
     return 'take';
   }
 
   async function botPlay(dice, opening) {
+    const ep = epoch;
     phase = 'botTurn';
     const c = cur();
     c.turn = 1; c.dice = dice;
     ui.update && ui.update();
+    const bv = { p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] };
     if (!opening && R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal === 0) {
       // the bot cannot move: show the roll unless no roll at all could move, then go to your turn
       if (!shutOut(c.b[1], c.b[0])) {
-        await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
+        await board.rollDice(bv, Settings.diceAnim ? 300 : 0);
         ui.toast && ui.toast(oppName() + ' can’t move with ' + dice.join('-'));
         await sleep(1100);
+        if (stale(ep)) return;
         board.drawDice(null);
       }
       const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx: ctxFor(1), subs: [], forcedNone: true };
@@ -827,19 +902,22 @@ const Game = (() => {
       save();
       return humanPreRoll();
     }
-    if (!opening) await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
+    if (!opening) await board.rollDice(bv, Settings.diceAnim ? 300 : 0);
     else board.drawDice({ p: 1, vals: dice.slice(), used: [false, false], order: [0, 1] });
+    if (stale(ep)) return;
     const ctx = ctxFor(1);
     const me = c.b[1], opp = c.b[0];
     const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx, subs: [] };
     const t0 = performance.now();
-    let thinking = setTimeout(() => board.drawStatus(1, 'Thinking'), 500);
+    let thinking = setTimeout(() => { if (!stale(ep)) board.drawStatus(1, 'Thinking'); }, 500);
     let res;
     try { res = await Play.moves(opp, me, dice[0], dice[1], ctx, M.level || 5); }
-    catch (e) { ui.toast && ui.toast('Engine error: ' + e.message); return; }
-    clearTimeout(thinking); board.drawStatus(1, '');
+    catch (e) { clearTimeout(thinking); if (!stale(ep)) { board.drawStatus(1, ''); ui.toast && ui.toast('Engine error: ' + e.message); } return; }
+    clearTimeout(thinking);
+    if (stale(ep)) return;
+    board.drawStatus(1, '');
     const el = performance.now() - t0;
-    if (el < 380) await sleep(380 - el);
+    if (el < 380) { await sleep(380 - el); if (stale(ep)) return; }
     if (!res.moves.length) {
       rec.forcedNone = true;
     } else {
@@ -851,6 +929,7 @@ const Game = (() => {
         const sim = R.simulatePairs(c.b[1], c.b[0], [s.from, s.to]);
         c.b[1] = sim.me; c.b[0] = sim.opp;
         const id = await board.moveChecker(1, s.from, s.to, s.hit);
+        if (stale(ep)) return;
         ids.push(id);
         await sleep(60);
       }
@@ -865,6 +944,7 @@ const Game = (() => {
     if (rec.forcedNone) analyseMove(rec);
     game().recs.push(rec);
     await sleep(250);
+    if (stale(ep)) return;
     c.dice = null;
     board.drawDice(null);
     if (checkWin(1)) return;
@@ -872,46 +952,72 @@ const Game = (() => {
     humanPreRoll();
   }
 
-  /* ---------- friend (remote player) ---------- */
+  // Firebase may hand back an array as an object keyed 0,1,2…: accept either
+  const arr = (x) => Array.isArray(x) ? x : (x && typeof x === 'object' ? Object.keys(x).sort((a, b) => a - b).map(k => x[k]) : []);
+  const validDice = (d) => { d = arr(d).map(x => x | 0); return d.length === 2 && d.every(x => x >= 1 && x <= 6) ? d : null; };
+
+  /* ---------- friend (remote player) ----------
+     Each side rolls its own dice and sends what it does: open (host's opening roll), roll, move, dbl,
+     take, pass, resign (with the level), racc / rdec (resignation accepted / declined), rm / rmno (rematch).
+     Whatever we are waiting for, a resignation offer can arrive instead and is always answered. */
   function netHooks() {
     return {
       status: (k) => {
         if (k === 'gone') { ui.toast && ui.toast(`${oppName()} disconnected. Waiting for them to come back`); board.drawStatus(1, `Waiting for ${oppName()}`); }
         if (k === 'back') { ui.toast && ui.toast(`${oppName()} is back`); board.drawStatus(1, ''); }
+        if (k === 'left') {
+          if (M) { M.friendLeft = true; save(); }
+          if (rm) { rm.theirs = false; rm.mine = false; }
+          ui.friendLeft && ui.friendLeft(oppName());
+          if (M && !M.over) board.drawStatus(1, `${oppName()} left`);
+        }
         ui.update && ui.update();
       }
     };
   }
+  // They offer to resign. Returns true if you accepted (the game is then over).
+  async function answerResign(l) {
+    const ep = epoch, c = cur();
+    const ok = await ui.botResigns(l, oppName(), resignPoints(l));
+    if (stale(ep)) return true;
+    Net.send({ t: ok ? 'racc' : 'rdec' });
+    if (ok) { await endGame(0, l, 'resign'); return true; }
+    save();
+    return false;
+  }
   async function friendOpening() {
+    const ep = epoch;
     phase = 'opening';
     const c = cur();
-    let mine, theirs;
-    if (M.net.role === 'host') {
-      if (!c.openMsg) {
+    // the host rolls the opening for both; the guest waits for it. Either way it is kept, so a reload replays it.
+    if (!c.openMsg) {
+      if (M.net.role === 'host') {
         let a, b;
         do { a = rollDie(); b = rollDie(); } while (a === b);
         c.openMsg = { a, b };
         Net.send({ t: 'open', a, b, g: game().no });
-        save();
+      } else {
+        board.drawStatus(1, `Waiting for ${oppName()}`);
+        let act;
+        do { act = await Net.next(); if (stale(ep)) return; } while (act.t !== 'open');
+        board.drawStatus(1, '');
+        c.openMsg = { a: act.b | 0, b: act.a | 0 };   // a = my die, b = theirs
       }
-      mine = c.openMsg.a; theirs = c.openMsg.b;
-    } else {
-      board.drawStatus(1, `Waiting for ${oppName()}`);
-      let act;
-      do { act = await Net.next(); } while (act.t !== 'open');
-      board.drawStatus(1, '');
-      mine = act.b; theirs = act.a;
+      save();
     }
+    const mine = c.openMsg.a, theirs = c.openMsg.b;
     busy = true;
     await board.rollDice({ single: [[0, mine], [1, theirs]] }, Settings.diceAnim ? 320 : 0);
     await sleep(420);
     busy = false;
+    if (stale(ep)) return;
     c.opening = false;
     if (mine > theirs) await humanRolled([mine, theirs], true);
-    else { await remotePlay([theirs, mine], true); }
+    else { c.turn = 1; c.dice = [theirs, mine]; save(); await remotePlay([theirs, mine], true); }
   }
-  // Their turn: wait for what they do next (double, roll, resign).
+  // Their turn: wait for what they do next (double, roll or resign).
   async function friendTurn() {
+    const ep = epoch;
     phase = 'remote';
     const c = cur();
     c.turn = 1; c.dice = null;
@@ -921,20 +1027,21 @@ const Game = (() => {
     board.drawStatus(1, Net.connected ? '' : `Waiting for ${oppName()}`);
     while (true) {
       const act = await Net.next();
+      if (stale(ep)) return;
       if (act.t === 'dbl') {
         const ca = await cubeCall(1, ctxFor(1));
+        if (stale(ep)) return;
         const rec = { k: 'cube', p: 1, doubler: 1, action: 'double', b: clone(c.b), ctx: ctxFor(1) };
         await analyseCube(rec, ca);
+        if (stale(ep)) return;
         game().recs.push(rec);
         const res = await humanCubeResponse(ca);
-        if (res === 'pass') return;
+        if (res !== 'take' || stale(ep)) return;
         phase = 'remote';
         continue;
       }
       if (act.t === 'resign') {
-        const ok = await ui.botResigns(act.l, oppName());
-        Net.send({ t: ok ? 'racc' : 'rdec' });
-        if (ok) return endGame(0, act.l, 'resign');
+        if (await answerResign(act.l)) return;
         continue;
       }
       if (act.t === 'roll') {
@@ -943,7 +1050,11 @@ const Game = (() => {
           game().recs.push(rec);
           cubeCall(1, ctxFor(1)).then(a => analyseCube(rec, a)).catch(() => { });
         }
-        return remotePlay(act.d, false);
+        const d = validDice(act.d);
+        if (!d) continue;
+        c.dice = d;
+        save();
+        return remotePlay(c.dice, false);
       }
     }
   }
@@ -952,7 +1063,9 @@ const Game = (() => {
     for (let a = 1; a <= 6; a++) for (let b = a; b <= 6; b++) if (R.turnInfo(me, opp, a, b).maxTotal > 0) return false;
     return true;
   }
+  // They have rolled: show the roll, then wait for their move (or a resignation offer).
   async function remotePlay(dice, opening) {
+    const ep = epoch;
     phase = 'remote';
     const c = cur();
     c.turn = 1; c.dice = dice;
@@ -960,13 +1073,20 @@ const Game = (() => {
     const ctx = ctxFor(1);
     const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx, subs: [] };
     const canMove = R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal > 0;
+    const view = { p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] };
     if (canMove || !shutOut(c.b[1], c.b[0])) {
-      if (!opening) await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
-      else board.drawDice({ p: 1, vals: dice.slice(), used: [false, false], order: [0, 1] });
+      if (!opening) await board.rollDice(view, Settings.diceAnim ? 300 : 0);
+      else board.drawDice(view);
+      if (stale(ep)) return;
     }
     let act;
-    do { act = await Net.next(); } while (act.t !== 'move');
-    const pairs = Array.isArray(act.m) ? act.m.slice(0, 8).map(x => x | 0) : [];
+    while (true) {
+      act = await Net.next();
+      if (stale(ep)) return;
+      if (act.t === 'move') break;
+      if (act.t === 'resign') { if (await answerResign(act.l)) return; }
+    }
+    const pairs = arr(act.m).slice(0, 8).map(x => x | 0);
     if (!pairs.length) rec.forcedNone = true;
     else {
       const { subs } = R.simulatePairs(c.b[1], c.b[0], pairs);
@@ -975,6 +1095,7 @@ const Game = (() => {
         const sim = R.simulatePairs(c.b[1], c.b[0], [s.from, s.to]);
         c.b[1] = sim.me; c.b[0] = sim.opp;
         ids.push(await board.moveChecker(1, s.from, s.to, s.hit));
+        if (stale(ep)) return;
         await sleep(60);
       }
       rec.subs = subs.map(s => ({ from: s.from, to: s.to, die: s.die, hit: s.hit }));
@@ -983,11 +1104,12 @@ const Game = (() => {
     }
     analyseMove(rec);
     game().recs.push(rec);
-    await sleep(200);
     c.dice = null;
+    save();
+    await sleep(200);
+    if (stale(ep)) return;
     board.drawDice(null);
     if (checkWin(1)) return;
-    save();
     humanPreRoll();
   }
 
@@ -1001,6 +1123,8 @@ const Game = (() => {
     return true;
   }
   async function endGame(winner, points, how, lvl) {
+    if (phase === 'over') return;
+    epoch++;
     phase = 'over';
     board.setInteractive(false);
     board.drawButtons([]);
@@ -1055,7 +1179,7 @@ const Game = (() => {
   function requestRematch() {
     if (!M || !M.over) return null;
     if (!friend()) { startRematch(); return 'started'; }
-    if (!Net.state) { ui.toast && ui.toast(`${oppName()} has left`); return null; }
+    if (!Net.state || M.friendLeft) { ui.toast && ui.toast(`${oppName()} has left`); return null; }
     if (!rm || rm.M !== M) rematchListen(M);
     rm.mine = true;
     Net.send({ t: 'rm' });
@@ -1078,43 +1202,78 @@ const Game = (() => {
     Store.del('current');
   }
   function nextGame() { if (!M.over) startGame(); }
+  // leaving a friend game on purpose: tell them, so they are not left waiting
+  async function leaveFriend() {
+    if (!friend() || !Net.state) return;
+    epoch++;
+    try { if (!M.friendLeft) Net.send({ t: 'bye' }); } catch (e) { }
+    await sleep(150);
+    await Net.leave();
+  }
 
-  async function humanResign(lvl) {
-    if (!M || M.over || phase === 'over' || phase === 'opening') return false;
+  // what a resignation at level l (1 single, 2 gammon, 3 backgammon) is worth right now
+  function resignPoints(l) {
     const c = cur();
+    const jac = M.matchTo === 0 && M.jacoby && M.cubeOn && c.cube.value === 1 && c.cube.owner === -1;
+    return (jac ? 1 : l) * c.cube.value;
+  }
+  // You can offer to resign on your own turn: before rolling or while moving.
+  const canResignNow = () => !!(M && !M.over && (phase === 'preroll' || phase === 'moving'));
+  // (a roll in progress counts as your turn: the offer goes in as soon as the dice land)
+  const canOfferResign = () => canResignNow() || !!(M && !M.over && phase === 'rolling');
+  // the Resign card is open: don't auto-play a forced move meanwhile
+  function holdForResign(on) { if (phase !== 'resigning') resignWanted = !!on; }
+  // Returns true (accepted: game over), false (declined, play on) or 'notnow'.
+  async function humanResign(lvl) {
+    if (!canOfferResign()) return 'notnow';
+    resignWanted = true;
+    try { for (let i = 0; (busy || phase === 'rolling') && i < 80; i++) await sleep(50); } finally { resignWanted = false; }
+    if (!canResignNow() || busy) return 'notnow';
+    const ep = epoch, c = cur(), was = phase;
+    if (phase === 'moving' && partial.length) await undoAll();
+    if (stale(ep)) return false;
+    phase = 'resigning';
+    board.setInteractive(false);
+    let accept;
     if (friend()) {
-      if (!(phase === 'preroll' || phase === 'moving')) return 'notnow';
-      if (phase === 'moving' && partial.length) await undoAll();
-      const was = phase;
-      phase = 'resigning';
-      board.setInteractive(false);
+      c.offer = { k: 'resign', l: lvl };
       Net.send({ t: 'resign', l: lvl });
-      board.drawStatus(1, `${oppName()} is deciding`);
-      let act;
-      do { act = await Net.next(); } while (act.t !== 'racc' && act.t !== 'rdec');
-      board.drawStatus(1, '');
-      if (act.t === 'racc') { await endGame(1, lvl, 'resign'); return true; }
-      phase = was;
-      if (was === 'moving') { board.setInteractive(true); drawMoveButtons(); }
-      return false;
+      save();
+      accept = await awaitResignAnswer();
+      if (accept == null) return false;
+    } else {
+      // the bot evaluates from its own perspective as if on roll
+      const ctx = ctxFor(1);
+      let ev;
+      if (c.turn === 1 || c.turn === -1) ev = await Play.call('evaluate', c.b[0], c.b[1], ctx, aLevel());
+      else { const e0 = await Play.call('evaluate', c.b[1], c.b[0], ctxFor(0), aLevel()); ev = { eq: -e0.eq }; }
+      const val = await Engine.call('pointsEq', lvl, ctx);
+      if (stale(ep)) return false;
+      accept = val >= ev.eq - 1e-4;
     }
-    // bot evaluates from its own perspective as if on roll
-    const ctx = ctxFor(1);
-    let ev;
-    if (c.turn === 1 || c.turn === -1) ev = await Play.call('evaluate', c.b[0], c.b[1], ctx, aLevel());
-    else { const e0 = await Play.call('evaluate', c.b[1], c.b[0], ctxFor(0), aLevel()); ev = { eq: -e0.eq }; }
-    const val = await Engine.call('pointsEq', lvl, ctx);
-    const accept = val >= ev.eq - 1e-4;
-    if (accept) {
-      if (pendingRecord && phase === 'moving') { await undoAll(); }
-      board.setInteractive(false);
-      await endGame(1, lvl, 'resign');
-    }
-    return accept;
+    if (accept) { await endGame(1, lvl, 'resign'); return true; }
+    // declined: back to where you were
+    phase = was;
+    if (was === 'moving') { board.setInteractive(true); drawMoveButtons(); }
+    else { board.drawButtons(prerollButtons(canDouble(0))); drawCubeNow(canDouble(0)); }
+    return false;
+  }
+  // You offered your friend a resignation: wait for their answer. true / false, or null if the game moved on.
+  async function awaitResignAnswer() {
+    const ep = epoch, c = cur();
+    board.drawStatus(1, `${oppName()} is deciding`);
+    let act;
+    do { act = await Net.next(); if (stale(ep)) return null; } while (act.t !== 'racc' && act.t !== 'rdec');
+    board.drawStatus(1, '');
+    c.offer = null;
+    save();
+    return act.t === 'racc';
   }
 
   /* ---------- resume ---------- */
   async function resume(saved) {
+    epoch++;
+    resetTurnState();
     M = saved;
     render(true);
     ui.update && ui.update();
@@ -1124,10 +1283,25 @@ const Game = (() => {
       try { await Net.resume(M.net, netHooks()); M.net = Net.state; }
       catch (e) { ui.toast && ui.toast('Can’t reconnect to your friend here'); return; }
       if (c.opening || c.turn === -1) return friendOpening();
-      if (c.turn === 0) { if (c.dice) return humanRolled(c.dice, true); return humanPreRoll(); }
+      if (c.turn === 0) {
+        // an offer was out when the page closed: keep waiting for the answer
+        if (c.offer && c.offer.k === 'dbl') { pendingCube = null; return awaitDoubleAnswer(null); }
+        if (c.offer && c.offer.k === 'resign') {
+          phase = 'resigning';
+          const lvl = c.offer.l;
+          const ok = await awaitResignAnswer();
+          if (ok == null) return;
+          if (ok) return endGame(1, lvl, 'resign');
+          ui.toast && ui.toast(`${oppName()} declines your resignation`);
+        }
+        if (c.dice) return humanRolled(c.dice, true);
+        return humanPreRoll();
+      }
+      if (c.dice) return remotePlay(c.dice, true);
       return friendTurn();
     }
     if (c.opening || c.turn === -1) return openingRoll();
+    c.offer = null;
     if (c.turn === 0) { if (c.dice) return humanRolled(c.dice, true); return humanPreRoll(); }
     return botTurn();
   }
@@ -1161,7 +1335,8 @@ const Game = (() => {
 
   return {
     attach(b, hooks) { board = b; Object.assign(ui, hooks); },
-    newMatch, resume, nextGame, humanResign, stats, ensureAnalysis, band, requestRematch, declineRematch,
+    newMatch, resume, nextGame, leaveFriend, humanResign, holdForResign, stats, ensureAnalysis, band, requestRematch, declineRematch, resignPoints,
+    get canResignNow() { return canOfferResign(); },
     get rematchAsked() { return !!(rm && rm.M === M && rm.theirs); },
     get M() { return M; }, get phase() { return phase; }, get busy() { return busy; }, previewBest,
     canPick, dests, tap, drop, undo, diceTap, swapDice,
@@ -1186,13 +1361,9 @@ const Game = (() => {
     redraw() {
       if (!M) return;
       const c = cur();
-      const sel = { dice: c.dice, phase };
       board.setSpeed(SPEEDS[Settings.speed] || 1);
-      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots(), compact: boardCompact() });
-      drawCubeNow(phase === 'preroll' && canDouble(0));
-      if (phase === 'moving') drawMoveButtons();
-      if (phase === 'preroll') board.drawButtons(prerollButtons(canDouble(0)));
-      else if (c.dice) board.drawDice({ p: c.turn === 1 ? 1 : 0, vals: c.dice.slice(), used: [false, false], order: [0, 1] });
+      // the board keeps its own dice, cube, buttons, status and arrows across a rebuild
+      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, ...boardLayout() });
       board.setMarked(lastBotIds);
     },
     pips() { if (!M || !M.cur) return null; return [R.pips(M.cur.b[0]), R.pips(M.cur.b[1])]; },
@@ -1200,6 +1371,7 @@ const Game = (() => {
     get isFriend() { return friend(); },
     get oppName() { return M ? (friend() ? Net.oppName : 'Bot') : 'Bot'; },
     debugRestart() { render(true); humanRolled(cur().dice, true); },
+    debugTurnStart() { return pendingRecord ? pendingRecord.b : cur().b; },
     certainLoss
   };
 })();

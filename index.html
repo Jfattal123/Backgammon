@@ -173,7 +173,9 @@ button { font: inherit; color: inherit; }
 }
 .card h2 { font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1.05; margin: 0; text-wrap: balance; }
 .card .sub { color: var(--muted); margin: -10px 0 0; font-size: 14px; line-height: 1.45; }
-.field { display: grid; gap: 8px; }
+.field { display: grid; gap: 8px; min-width: 0; }
+.field > * { min-width: 0; }
+.field select.sel { width: 100%; max-width: 100%; text-overflow: ellipsis; }
 .field > .lab { font-size: 11.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: var(--muted); }
 .seg { display: flex; background: var(--bg); border-radius: 11px; padding: 3px; gap: 3px; flex-wrap: wrap; }
 .seg button { flex: 1 1 0; border: 0; background: transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--muted); min-height: 38px; white-space: nowrap; }
@@ -199,12 +201,14 @@ select.sel { appearance: none; background: var(--bg); border: 0; border-radius: 
 .list { display: grid; gap: 6px; }
 .histitem { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg); cursor: pointer; border: 0; text-align: left; width: 100%; }
 .histitem:hover { background: var(--line); }
+.histitem[disabled] { opacity: .45; cursor: default; }
+.histitem[disabled]:hover { background: var(--bg); }
 .histitem .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .histitem .grow span:last-child { color: var(--muted); font-size: 12.5px; }
 
 .menu {
   position: fixed; z-index: 30; background: var(--surface-2); border-radius: 14px; box-shadow: var(--shadow); border: 1px solid var(--line);
-  padding: 6px; display: grid; min-width: 220px;
+  padding: 6px; display: grid; min-width: 220px; overflow: auto; overscroll-behavior: contain;
 }
 .menu button { border: 0; background: transparent; text-align: left; padding: 11px 12px; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; gap: 10px; align-items: center; }
 .menu button:hover, .menu button:focus-visible { background: var(--bg); }
@@ -396,13 +400,14 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 .dicebtn { border: 0; background: transparent; padding: 0 4px; display: inline-flex; gap: 8px; cursor: pointer; color: var(--fg); }
 #app.portrait .stage { padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px); }
 #app.portrait .boardbox { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding-top: 4px; }
-#app.portrait #board { flex: 0 1 auto; min-height: 0; width: 100%; height: auto; max-height: 100%; }
+#app.portrait #board { flex: 0 0 auto; }
 #app.portrait .actbar { position: static; transform: none; width: 100%; max-width: 560px; min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #app.portrait .actbar[hidden] { display: flex !important; visibility: hidden; }
 #app.portrait .actbar .side { display: flex; gap: 8px; flex: 1 1 0; }
 #app.portrait .actbar .side.r { justify-content: flex-end; }
 #app.portrait .actbar .btnx { flex: 0 1 140px; }
-#app.portrait .tutor { position: static; transform: none; width: 100%; max-width: 560px; animation: none; flex: 0 0 auto; }
+#app.portrait .tutor { position: static; transform: none; width: calc(100% - 16px); max-width: 560px; animation: none; flex: 0 0 auto; box-sizing: border-box; }
+#app.portrait.tutoring .actbar { display: none !important; }
 #app.portrait .actbar { flex: 0 0 auto; box-sizing: border-box; padding-inline: 10px; }
 
 /* ---------- phone on its side: the top bar becomes a slim column on the right so the board gets the full height ---------- */
@@ -429,6 +434,16 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 input.txt { width: 100%; font: inherit; font-weight: 600; background-image: none; padding-right: 12px; cursor: text; }
 input.txt.code { width: 9ch; text-transform: uppercase; letter-spacing: 3px; font-family: var(--font-num); text-align: center; flex: 0 0 auto; }
 .codebig { font-size: 44px; font-weight: 600; letter-spacing: 8px; text-align: center; padding: 14px; background: var(--bg); border-radius: 14px; user-select: all; }
+
+/* review: the decision card shrinks gracefully when its column is narrow (small phones on their side) */
+.dcard { container-type: inline-size; }
+@container (max-width: 330px) {
+  .rvnav { gap: 6px; }
+  .navbtn span { display: none; }
+  .navbtn, .navbtn.next { padding: 0 12px; }
+  .navpos { font-size: 12px; }
+}
+@container (max-width: 250px) { .navpos span { display: none; } }
 
 </style>
 </head><body>
@@ -653,35 +668,47 @@ const R = (() => {
 /* ===================== BOARD (SVG) ===================== */
 // Board geometry. SLOTS = how many checkers a point shows before the stack squeezes up:
 // 5 is the classic look; short landscape screens use fewer (bigger checkers), tall screens more.
-const G = { F: 14, FV: 26, RAIL: 54, PW: 64, BAR: 58, TRAY: 66, CD: 58, MID: 100 };
-// compact frame (phones held upright): thinner rails, bar and tray so the points and checkers get more of the width
+const G = { FV: 26, PW: 64, TXT: 12 };
+// Two frames, same look:
+//  standard (laptops, tablets, phones on their side): left rail for the cube and pip counts, tray on the right
+//  compact  (phones held upright): no side rail (cube sits on the bar, pip counts in the tray) so the
+//           points and checkers get as much of the narrow screen as possible
+G.FRAMES = {
+  standard: { F: 14, RAIL: 54, BAR: 58, TRAY: 66, CD: 59, TIN: 50, SLAB: 42, BAROFF: 47, RX: 18, FV: 26 },
+  compact: { F: 6, RAIL: 0, BAR: 46, TRAY: 46, CD: 60, TIN: 38, SLAB: 30, BAROFF: 54, RX: 10, FV: 30 }
+};
+G.frameOf = (compact) => G.FRAMES[compact ? 'compact' : 'standard'];
+G.widthOf = (compact) => { const f = G.frameOf(compact); return 2 * f.F + f.RAIL + 12 * G.PW + f.BAR + f.TRAY; };
+G.midFor = (n) => n <= 4 ? 82 : 100;   // short boards get a slimmer middle strip
+G.heightOf = (compact, n, mid) => G.frameOf(compact).FV * 2 + 2 * n * G.frameOf(compact).CD + (mid || G.midFor(n));
+// Board text (point numbers, pip counts) is sized for the screen, not the board: about 10.5px however
+// big or small the board is drawn, within what the number strip can hold.
+G.setTextScale = function (pxPerUnit) { this.TXT = Math.max(11, Math.min(this.FV - 6, 10.5 / (pxPerUnit || 1))); };
 G.setFrame = function (compact) {
   this.COMPACT = !!compact;
-  // compact: edge-to-edge points, no side rail (cube and pips move to the bar and tray), checkers fill the point width
-  Object.assign(this, compact ? { F: 0, RAIL: 0, BAR: 46, TRAY: 36, CD: 62, TIN: 28, SLAB: 24, BAROFF: 54 } : { F: 14, RAIL: 54, BAR: 58, TRAY: 66, CD: 58, TIN: 52, SLAB: 44, BAROFF: 46 });
-  this.W = this.F + this.RAIL + 12 * this.PW + this.BAR + this.TRAY + this.F;
+  Object.assign(this, this.frameOf(compact));
+  this.W = this.widthOf(compact);
   this.FL = this.F + this.RAIL;                 // field left
   this.XR = this.FL + 6 * this.PW + this.BAR;   // right half start
   this.BARX = this.FL + 6 * this.PW + this.BAR / 2;
   this.TRAYX = this.XR + 6 * this.PW + this.TRAY / 2;
   this.RAILX = this.F + this.RAIL / 2;
 };
-G.setFrame(false);
-G.midFor = (n) => n <= 4 ? 82 : 100;   // short boards get a slimmer middle strip
-G.setSlots = function (n) {
-  this.SLOTS = n; this.MID = this.midFor(n);
+G.setSlots = function (n, mid) {
+  this.SLOTS = n; this.MID = mid || this.midFor(n);
   this.PL = n * this.CD;             // point length
   this.FH = 2 * this.PL + this.MID;
   this.H = this.FV * 2 + this.FH;
   this.MIDY = this.FV + this.FH / 2;
 };
-G.heightFor = (n) => G.FV * 2 + 2 * n * G.CD + G.midFor(n);
+G.setFrame(false);
 G.setSlots(5);
-// Pick the point length (checkers per point before stacks squeeze) for a w x h box.
-// Big screens keep the classic 5 (or longer if there is spare height). Small screens trade a little
-// checker size for natural proportions: 4 is fine, 3 only when there is no other way.
-G.bestSlots = function (w, h, maxN = 10) {
-  const px = (n) => this.CD * Math.min(w / this.W, h / this.heightFor(n));
+// Pick the point length (checkers per point before stacks squeeze) for a w x h box. Pure: does not
+// change the current geometry. Big screens keep the classic 5 (or longer if there is spare height).
+// Small screens trade a little checker size for natural proportions: 4 is fine, 3 only when there is no other way.
+G.bestSlots = function (w, h, maxN = 10, compact = false) {
+  const CD = this.frameOf(compact).CD, W = this.widthOf(compact);
+  const px = (n) => CD * Math.min(w / W, h / this.heightOf(compact, n));
   if (px(5) >= 40) { let best = 5; for (let n = 5; n <= maxN; n++) if (px(n) >= px(5) * 0.99) best = n; return best; }
   const pen = { 3: 0.62, 4: 0.84 };
   let best = 5, bs = -1;
@@ -755,8 +782,8 @@ function pipDots(v) {
 function checkerColors(p, humanLight) {
   const light = (p === 0) === humanLight;
   return light
-    ? { fill: 'url(#gLight)', rim: 'var(--chk-light-rim)', ring: 'rgba(0,0,0,.10)', slab: '#e9e4da', slabRim: '#b9b3a8', text: '#1a1d21' }
-    : { fill: 'url(#gDark)', rim: 'var(--chk-dark-rim)', ring: 'rgba(255,255,255,.08)', slab: '#2a2e33', slabRim: '#4a5058', text: '#f2efe9' };
+    ? { fill: 'url(#gLight)', rim: 'var(--chk-light-rim)', ring: 'rgba(0,0,0,.11)', ring2: 'rgba(255,255,255,.7)', slab: '#e9e4da', slabRim: '#b9b3a8', text: '#1a1d21' }
+    : { fill: 'url(#gDark)', rim: 'var(--chk-dark-rim)', ring: 'rgba(0,0,0,.45)', ring2: 'rgba(255,255,255,.07)', slab: '#2a2e33', slabRim: '#4a5058', text: '#f2efe9' };
 }
 function diceColors(p, humanLight) {
   const light = (p === 0) === humanLight;
@@ -770,40 +797,50 @@ function boardBaseSVG(flip, opts = {}) {
   s += `<defs>
     <radialGradient id="gLight" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f1ede6"/><stop offset="1" stop-color="#d9d3c8"/></radialGradient>
     <radialGradient id="gDark" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#4b5159"/><stop offset=".5" stop-color="#22262b"/><stop offset="1" stop-color="#121417"/></radialGradient>
-    <linearGradient id="gField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#25393f"/><stop offset=".5" stop-color="#20333a"/><stop offset="1" stop-color="#25393f"/></linearGradient>
-    <linearGradient id="gPtAt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#47767e"/><stop offset="1" stop-color="#355f67"/></linearGradient>
-    <linearGradient id="gPtAb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#47767e"/><stop offset="1" stop-color="#355f67"/></linearGradient>
-    <linearGradient id="gPtBt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6c4a8"/><stop offset="1" stop-color="#b9a585"/></linearGradient>
-    <linearGradient id="gPtBb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#d6c4a8"/><stop offset="1" stop-color="#b9a585"/></linearGradient>
+    <linearGradient id="gFrame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d2e32"/><stop offset="1" stop-color="#142124"/></linearGradient>
+    <linearGradient id="gField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#263c42"/><stop offset=".5" stop-color="#1f3338"/><stop offset="1" stop-color="#263c42"/></linearGradient>
+    <linearGradient id="gBar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#16252a"/><stop offset=".5" stop-color="#1d2f34"/><stop offset="1" stop-color="#16252a"/></linearGradient>
+    <linearGradient id="gPtAt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c7d85"/><stop offset="1" stop-color="#35606a"/></linearGradient>
+    <linearGradient id="gPtAb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4c7d85"/><stop offset="1" stop-color="#35606a"/></linearGradient>
+    <linearGradient id="gPtBt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dac9ad"/><stop offset="1" stop-color="#b7a383"/></linearGradient>
+    <linearGradient id="gPtBb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#dac9ad"/><stop offset="1" stop-color="#b7a383"/></linearGradient>
     <filter id="fShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2.5" stdDeviation="2.2" flood-color="#000" flood-opacity=".38"/></filter>
     <filter id="fLift" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="10" stdDeviation="7" flood-color="#000" flood-opacity=".42"/></filter>
     <marker id="mArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f2b84b"/></marker>
     <marker id="mArrowG" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5fd39b"/></marker>
   </defs>`;
-  s += `<rect x="0" y="0" width="${G.W}" height="${G.H}" rx="${G.COMPACT ? 6 : 18}" fill="var(--frame)"/>`;
-  // field halves
+  // frame, with a faint inner highlight so it reads as a raised edge
+  s += `<rect x="0" y="0" width="${G.W}" height="${G.H}" rx="${G.RX}" fill="url(#gFrame)"/>`;
+  s += `<rect x=".75" y=".75" width="${G.W - 1.5}" height="${G.H - 1.5}" rx="${G.RX - .75}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1.5"/>`;
+  // field halves (inset)
   const lx = g.mx(G.FL), rx = g.mx(G.XR);
   const hx = (x) => flip ? x - 6 * G.PW : x;
-  s += `<rect x="${hx(lx)}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="6" fill="url(#gField)"/>`;
-  s += `<rect x="${hx(rx)}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="6" fill="url(#gField)"/>`;
-  // bar
-  s += `<rect x="${g.mx(G.BARX) - G.BAR / 2 + 6}" y="${G.FV}" width="${G.BAR - 12}" height="${G.FH}" rx="6" fill="#1a292d"/>`;
-  // tray
+  for (const x0 of [hx(lx), hx(rx)]) {
+    s += `<rect x="${x0}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="5" fill="url(#gField)"/>`;
+  }
+  // bar, with a centre seam
+  const bx = g.mx(G.BARX);
+  s += `<rect x="${bx - G.BAR / 2 + 5}" y="${G.FV}" width="${G.BAR - 10}" height="${G.FH}" rx="5" fill="url(#gBar)"/>`;
+  s += `<line x1="${bx}" y1="${G.FV + 6}" x2="${bx}" y2="${G.H - G.FV - 6}" stroke="rgba(0,0,0,.28)" stroke-width="1.5"/>`;
+  // bear-off trays
   const tx = g.mx(G.TRAYX) - G.TIN / 2;
-  s += `<rect x="${tx}" y="${G.FV}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
-  s += `<rect x="${tx}" y="${G.MIDY + 8}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="#132024"/>`;
-  // points
+  for (const y0 of [G.FV, G.MIDY + 6]) s += `<rect x="${tx}" y="${y0}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="#111d20" stroke="rgba(0,0,0,.25)" stroke-width="1"/>`;
+  // points, with softened tips
   for (let i = 0; i < 24; i++) {
-    const x = g.ptX(i), top = g.isTop(i);
-    const y0 = top ? G.FV : G.H - G.FV, y1 = top ? G.FV + G.PL - 8 : G.H - G.FV - G.PL + 8;
+    const x = g.ptX(i), top = g.isTop(i), dir = top ? 1 : -1;
+    const y0 = top ? G.FV : G.H - G.FV, y1 = top ? G.FV + G.PL - 6 : G.H - G.FV - G.PL + 6;
     const c = i % 2 === 0 ? (top ? 'url(#gPtAt)' : 'url(#gPtAb)') : (top ? 'url(#gPtBt)' : 'url(#gPtBb)');
-    s += `<path d="M${x - G.PW / 2 + 3},${y0} L${x},${y1} L${x + G.PW / 2 - 3},${y0} Z" fill="${c}"/>`;
+    const hw = G.PW / 2 - 4;
+    s += `<path d="M${x - hw},${y0} L${x - 3},${y1 - dir * 7} Q${x},${y1 + dir} ${x + 3},${y1 - dir * 7} L${x + hw},${y0} Z" fill="${c}"/>`;
     if (opts.numbers !== false) {
-      const ny = top ? G.FV - 8 : G.H - G.FV + 17;
-      const ry = top ? G.FV / 2 : G.H - G.FV / 2;
-      s += ROT ? `<text class="ptnum" x="${x}" y="${ry}" text-anchor="middle" dominant-baseline="central"${trT(x, ry)}>${i + 1}</text>`
-        : `<text class="ptnum" x="${x}" y="${G.COMPACT ? (top ? G.FV - 6 : G.H - G.FV + 19) : ny}" text-anchor="middle"${G.COMPACT ? ' style="font-size:16px"' : ''}>${i + 1}</text>`;
+      const fs = G.TXT;
+      const ny = top ? G.FV / 2 + fs * 0.36 : G.H - G.FV / 2 + fs * 0.36;
+      s += `<text class="ptnum" x="${x}" y="${ny}" text-anchor="middle" style="font-size:${fs}px">${i + 1}</text>`;
     }
+  }
+  // field edges: a soft inner shadow over the points
+  for (const x0 of [hx(lx), hx(rx)]) {
+    s += `<rect x="${x0 + .75}" y="${G.FV + .75}" width="${6 * G.PW - 1.5}" height="${G.FH - 1.5}" rx="5" fill="none" stroke="rgba(0,0,0,.32)" stroke-width="1.5"/>`;
   }
   return s;
 }
@@ -814,7 +851,8 @@ function checkerSVG(id, p, humanLight, x, y, inTray) {
   return `<g class="chk${inTray ? ' tray' : ''}" data-id="${id}" data-p="${p}" transform="translate(${x},${y})">
     <g class="disc" ${inTray ? 'style="display:none"' : ''} filter="url(#fShadow)">
       <circle r="${r}" fill="${c.fill}" stroke="${c.rim}" stroke-width="1.5"/>
-      <circle r="${r - 9}" fill="none" stroke="${c.ring}" stroke-width="2"/>
+      <circle r="${r * 0.66}" fill="none" stroke="${c.ring}" stroke-width="1.6"/>
+      <circle r="${r * 0.66 - 1.6}" fill="none" stroke="${c.ring2}" stroke-width="1"/>
     </g>
     <rect class="slab" ${inTray ? '' : 'style="display:none"'} x="${-G.SLAB / 2}" y="-6" width="${G.SLAB}" height="12" rx="3" fill="${c.slab}" stroke="${c.slabRim}" stroke-width="1"/>
   </g>`;
@@ -859,8 +897,8 @@ function arrowPath(g, fromLoc, toLoc, fromK, toK) {
 // Full static board snapshot as SVG string (review / previews).
 // st: {b:[b0,b1], dice:[d0,d1]|null, diceP, cube, owner, arrows:[{p, pairs, color}] }
 function staticBoardSVG(st, o) {
-  const savedRot = ROT, savedSlots = G.SLOTS, savedFrame = G.COMPACT; ROT = 0; G.setFrame(false); G.setSlots(5);
-  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setFrame(savedFrame); G.setSlots(savedSlots); }
+  const savedRot = ROT, savedSlots = G.SLOTS, savedMid = G.MID, savedFrame = G.COMPACT, savedTxt = G.TXT; ROT = 0; G.setFrame(false); G.setSlots(5); G.TXT = 13;
+  try { return staticBoardSVG0(st, o); } finally { ROT = savedRot; G.setFrame(savedFrame); G.setSlots(savedSlots, savedMid); G.TXT = savedTxt; }
 }
 function staticBoardSVG0(st, o) {
   const flip = !!o.flip, humanLight = o.humanLight !== false;
@@ -889,8 +927,8 @@ function staticBoardSVG0(st, o) {
   }
   if (st.cubeOn) { const cp = g.cubePos(st.owner == null ? -1 : st.owner); s += cubeSVG(cp.x, cp.y, st.owner === -1 || st.owner == null ? (st.cube > 1 ? st.cube : 64) : st.cube); }
   // pip counts
-  s += `<text x="${g.mx(G.RAILX)}" y="${G.H - G.FV - 70}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[0]}</text>`;
-  s += `<text x="${g.mx(G.RAILX)}" y="${G.FV + 78}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[1]}</text>`;
+  s += `<text x="${g.mx(G.RAILX)}" y="${G.H - G.FV - 118}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[0]}</text>`;
+  s += `<text x="${g.mx(G.RAILX)}" y="${G.FV + 132}" text-anchor="middle" font-size="13" fill="var(--board-text)" style="font-family:var(--font-num)">${counts[1]}</text>`;
   if (st.arrows) for (const ar of st.arrows) s += arrowsSVG(g, st.b, ar.p, ar.pairs, ar.color);
   s += `</svg>`;
   return s;
@@ -918,7 +956,7 @@ function arrowsSVG(g, bb, p, pairs, color) {
 
 /* ---------- Interactive board ---------- */
 function createBoard(svg, cb) {
-  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5, compact = false;
+  let flip = false, humanLight = true, showPips = true, rot = 0, slots = 5, compact = false, mid = 0;
   let g = geo(false);
   const stacks = new Map(); // locKey -> [ids]
   const where = new Map();  // id -> loc
@@ -931,10 +969,17 @@ function createBoard(svg, cb) {
   let dests = null; // Map dest -> path for current drag/selection
   let marked = new Set();
   let reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Everything the board shows is remembered, so a rebuild (rotation, resize, settings) redraws it exactly.
+  // `gen` changes on every rebuild: animations started before it stop touching the new board.
+  let gen = 0, lastBtns = [], statusTxt = ['', ''], arrowsHtml = '';
 
 
   let root = svg;
+  // explicit pixel size: no reliance on how each browser sizes an SVG from its viewBox
+  function size(w, h) { svg.style.width = Math.max(1, Math.floor(w)) + 'px'; svg.style.height = Math.max(1, Math.floor(h)) + 'px'; }
   function build() {
+    gen++;
+    selFrom = null; dests = null; drag = null;
     ROT = rot;
     const eflip = rot ? !flip : flip;
     g = geo(eflip);
@@ -1009,20 +1054,23 @@ function createBoard(svg, cb) {
       if (!ids.length) continue;
       const tp = g.stackPos({ t: 'off', p }, ids.length - 1, ids.length);
       const ty = p === 0 ? tp.y - 22 : tp.y + 22;
-      s += `<text x="${tp.x}" y="${ty}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="var(--board-text)" style="pointer-events:none;font-family:var(--font-num)"${trT(tp.x, ty)}>${ids.length}</text>`;
+      s += `<text x="${tp.x}" y="${ty}" text-anchor="middle" dominant-baseline="central" font-size="${Math.min(G.TRAY * 0.42, G.TXT * 1.05)}" font-weight="700" fill="var(--board-text)" style="pointer-events:none;font-family:var(--font-num)"${trT(tp.x, ty)}>${ids.length}</text>`;
     }
     cg.innerHTML = s;
     if (showPips && cb.pips) {
       const pp = cb.pips();
       const rx = g.mx(G.RAILX);
-      const pipTxt = (y, v, lblDy) => ROT
-        ? `<text x="${rx}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)"${trT(rx, y)}>${v} <tspan font-size="9" opacity=".7" letter-spacing="1">PIPS</tspan></text>`
-        : `<text x="${rx}" y="${y}" text-anchor="middle" font-size="13" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text><text x="${rx}" y="${y + lblDy}" text-anchor="middle" font-size="9" letter-spacing="1" fill="var(--board-text)" opacity=".7">PIPS</text>`;
+      const fv = Math.min(19, G.TXT * 1.12), fl = Math.min(12, G.TXT * 0.72);
+      const pipTxt = (y, v, lblDy) => `<text x="${rx}" y="${y}" text-anchor="middle" font-size="${fv}" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text><text x="${rx}" y="${y + lblDy * fl / 9}" text-anchor="middle" font-size="${fl}" letter-spacing="1" fill="var(--board-text)" opacity=".7">PIPS</text>`;
       if (G.COMPACT) {
-        const tx = g.mx(G.TRAYX), t = (y, v) => `<text x="${tx}" y="${y}" text-anchor="middle" font-size="16" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text>`;
-        layers.pips.innerHTML = pp ? t(G.MIDY + 30, pp[0]) + t(G.MIDY - 18, pp[1]) : '';
+        // compact: in the tray, beside the middle (yours below, theirs above)
+        const fv = Math.min(G.TRAY * 0.5, G.TXT), fl = Math.min(11, fv * 0.55);
+        const tx = g.mx(G.TRAYX), t = (y, v) => `<text x="${tx}" y="${y}" text-anchor="middle" font-size="${fv}" font-weight="600" fill="var(--board-text)" style="font-family:var(--font-num)">${v}</text>`;
+        const lbl = (y) => `<text x="${tx}" y="${y}" text-anchor="middle" font-size="${fl}" letter-spacing=".5" fill="var(--board-text)" opacity=".7">PIPS</text>`;
+        layers.pips.innerHTML = pp ? t(G.MIDY + 8 + fv, pp[0]) + lbl(G.MIDY + 10 + fv + fl) + t(G.MIDY - 8 - fl - 2, pp[1]) + lbl(G.MIDY - 6) : '';
       } else
-      layers.pips.innerHTML = pp ? pipTxt(G.H - G.FV - 70, pp[0], -16) + pipTxt(G.FV + 78, pp[1], 16) : '';
+      // clear of an owned cube (and its Double label) at the rail ends and of the centred cube
+      layers.pips.innerHTML = pp ? pipTxt(G.H - G.FV - 118, pp[0], -16) + pipTxt(G.FV + 132, pp[1], 16) : '';
     } else layers.pips.innerHTML = '';
   }
 
@@ -1036,13 +1084,16 @@ function createBoard(svg, cb) {
     const el = els.get(id);
     const from = posOf.get(id) || pt;
     dur = reduceMotion ? 0 : dur * speed;
+    if (!el) return Promise.resolve();
     if (dur <= 0) { setXY(id, pt.x, pt.y); return Promise.resolve(); }
     if (lift) layers.drag.appendChild(el);
     const disc = el.querySelector('.disc');
     if (lift && disc) disc.setAttribute('filter', 'url(#fLift)');
+    const my = gen;
     return new Promise(res => {
       const t0 = performance.now();
       function step(now) {
+        if (my !== gen) return res();   // the board was rebuilt underneath us: stop
         const t = Math.min(1, (now - t0) / dur), e = ease(t);
         const x = from.x + (pt.x - from.x) * e, y = from.y + (pt.y - from.y) * e;
         let sc = lift ? 1 + 0.09 * Math.sin(Math.PI * t) : 1;
@@ -1068,6 +1119,7 @@ function createBoard(svg, cb) {
 
   // Move top checker of player p from index `from` to `to` (-1 off). hit handled if flagged.
   async function moveChecker(p, from, to, hit, opts = {}) {
+    const my = gen;
     const fl = locOf(p, from), tl = locOf(p, to);
     const fk = locKey(fl), tk = locKey(tl);
     const fst = stacks.get(fk) || [];
@@ -1095,11 +1147,13 @@ function createBoard(svg, cb) {
     proms.push(main);
     if (hitId != null) {
       const bl = { t: 'bar', p: 1 - p };
-      proms.push(new Promise(r => setTimeout(r, dur * speed * 0.55)).then(() => { cb.sound && cb.sound('hit'); return animateTo(hitId, g.stackPos(bl, stacks.get(locKey(bl)).length - 1, stacks.get(locKey(bl)).length), 300, true); }));
+      proms.push(new Promise(r => setTimeout(r, dur * speed * 0.55)).then(() => { if (my !== gen) return; cb.sound && cb.sound('hit'); return animateTo(hitId, g.stackPos(bl, stacks.get(locKey(bl)).length - 1, stacks.get(locKey(bl)).length), 300, true); }));
     }
     await Promise.all(proms);
+    if (my !== gen) return id;   // rebuilt mid-move: the new board already shows the result
     // relayout affected stacks (compression)
     await Promise.all([layoutStack(fk, fl, true), layoutStack(tk, tl, true), hitId != null ? layoutStack(locKey({ t: 'bar', p: 1 - p }), { t: 'bar', p: 1 - p }, true) : null]);
+    if (my !== gen) return id;
     orderZ();
     updateCounts();
     return id;
@@ -1107,6 +1161,7 @@ function createBoard(svg, cb) {
 
   // Reverse of moveChecker (for undo)
   async function unmoveChecker(p, from, to, hit) {
+    const my = gen;
     const fl = locOf(p, from), tl = locOf(p, to);
     const fk = locKey(fl), tk = locKey(tl);
     const id = (stacks.get(tk) || []).pop();
@@ -1125,7 +1180,9 @@ function createBoard(svg, cb) {
     }
     cb.sound && cb.sound('place');
     await Promise.all(proms);
+    if (my !== gen) return;
     await Promise.all([layoutStack(fk, fl, true), layoutStack(tk, tl, true)]);
+    if (my !== gen) return;
     orderZ();
     updateCounts();
   }
@@ -1134,8 +1191,10 @@ function createBoard(svg, cb) {
   let diceState = null; // {p, vals, used:[bool], order:[i,j]}
   function drawDice(st, dieRot) {
     diceState = st;
-    if (cb.barDice && !dieRot) cb.barDice(st);
+    if (cb.barDice) cb.barDice(st);
     if (!st) { layers.dice.innerHTML = ''; return; }
+    // phones held upright show your dice in the big control bar under the board, so not twice
+    if (!st.single && st.p === 0 && cb.isPortrait && cb.isPortrait()) { layers.dice.innerHTML = ''; return; }
     const c = g.diceCenter(st.p), col = diceColors(st.p, humanLight);
     let s = '';
     const vals = st.vals;
@@ -1169,12 +1228,12 @@ function createBoard(svg, cb) {
     dur = reduceMotion ? 0 : dur;
     cb.sound && cb.sound('dice');
     if (dur > 0) {
-      const t0 = performance.now();
+      const t0 = performance.now(), my = gen;
       await new Promise(res => {
         let last = 0;
         function step(now) {
           const t = (now - t0) / dur;
-          if (t >= 1) return res();
+          if (t >= 1 || my !== gen) return res();
           if (now - last > 55) {
             last = now;
             const fake = st.single
@@ -1218,9 +1277,9 @@ function createBoard(svg, cb) {
     if (animate && prevPos && !reduceMotion && (prevPos.x !== pos.x || prevPos.y !== pos.y)) {
       const w = layers.cube.querySelector('.cubewrap');
       const from = prevPos;
-      const t0 = performance.now(), dur = 300 * speed;
+      const t0 = performance.now(), dur = 300 * speed, my = gen;
       w.setAttribute('transform', `translate(${from.x},${from.y})${trG()}`);
-      (function step(now) { const t = Math.min(1, (now - t0) / dur), e = ease(t); w.setAttribute('transform', `translate(${from.x + (pos.x - from.x) * e},${from.y + (pos.y - from.y) * e})${trG()}`); if (t < 1) requestAnimationFrame(step); })(t0);
+      (function step(now) { if (my !== gen) return; const t = Math.min(1, (now - t0) / dur), e = ease(t); w.setAttribute('transform', `translate(${from.x + (pos.x - from.x) * e},${from.y + (pos.y - from.y) * e})${trG()}`); if (t < 1) requestAnimationFrame(step); })(t0);
     }
     cubeState.pos = pos;
   }
@@ -1228,6 +1287,7 @@ function createBoard(svg, cb) {
   /* ---- buttons ---- */
   // btns: [{id, label, kind:'primary'|'accent'|'ghost', side:0|1, slot:'left'|'right'|'center'|'l2'|'r2', w}]
   function drawButtons(btns) {
+    lastBtns = btns || [];
     let s = '';
     // portrait: large HTML buttons below the board instead of tiny in-board ones
     if (cb.htmlButtons) {
@@ -1259,6 +1319,8 @@ function createBoard(svg, cb) {
 
   // status text in a half (e.g., thinking)
   function drawStatus(side, text) {
+    statusTxt[side] = text || '';
+    if (!text && statusTxt[1 - side]) { const o = 1 - side; statusTxt[side] = ''; return drawStatus(o, statusTxt[o]); }
     let el = svg.querySelector('#lyStatus');
     if (!el) { el = document.createElementNS(SVGNS, 'g'); el.id = 'lyStatus'; layers.btn.before(el); }
     if (!text) { el.innerHTML = ''; return; }
@@ -1276,7 +1338,7 @@ function createBoard(svg, cb) {
       const loc = locOf(0, d);
       if (loc.t === 'off') {
         const x = g.mx(G.TRAYX), y = G.MIDY + 8 + (G.FH / 2 - 8) / 2;
-        s += `<rect x="${x - G.TIN / 2}" y="${G.MIDY + 8}" width="${G.TIN}" height="${G.FH / 2 - 8}" rx="6" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
+        s += `<rect x="${x - G.TIN / 2}" y="${G.MIDY + 6}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
         continue;
       }
       const k = locKey(loc), n = (stacks.get(k) || []).length;
@@ -1300,7 +1362,7 @@ function createBoard(svg, cb) {
   }
   function setMarked(ids) { marked.forEach(id => mark(id, false)); marked = new Set(ids || []); marked.forEach(id => mark(id, true)); }
 
-  function drawArrows(html) { layers.arrows.innerHTML = html || ''; }
+  function drawArrows(html) { arrowsHtml = html || ''; layers.arrows.innerHTML = arrowsHtml; }
   function arrowsFor(bb, p, pairs, color) { return arrowsSVG(g, bb, p, pairs, color); }
 
   /* ---- input ---- */
@@ -1417,9 +1479,24 @@ function createBoard(svg, cb) {
 
   build();
   return {
-    rebuild(b, o) { if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; if (o.compact != null) compact = !!o.compact; } G.setFrame(compact); G.setSlots(slots); build(); setPositions(b); if (diceState) drawDice(diceState); if (cubeState) drawCube(cubeState); },
+    rebuild(b, o) {
+      if (o) { flip = !!o.flip; humanLight = o.humanLight !== false; showPips = o.pips !== false; if (o.rot != null) rot = o.rot; if (o.slots) slots = o.slots; if (o.compact != null) compact = !!o.compact; mid = o.mid || 0; }
+      G.setFrame(compact); G.setSlots(slots, mid);
+      if (o && o.px) G.setTextScale(o.px.w / G.W);
+      build(); setPositions(b);
+      if (cubeState) drawCube(cubeState);
+      drawDice(diceState);
+      drawButtons(lastBtns);
+      statusTxt.forEach((t, sd) => { if (t) drawStatus(sd, t); });
+      layers.arrows.innerHTML = arrowsHtml;
+      if (o && o.px) size(o.px.w, o.px.h);
+    },
+    size,
     get rot() { return rot; },
     get slots() { return slots; },
+    get compact() { return compact; },
+    get mid() { return mid; },
+    get aspect() { return G.W / G.H; },
     toScreen(x, y) { const m = root.getScreenCTM(); return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }; },
     setPositions, moveChecker, unmoveChecker, drawDice, rollDice, drawCube, drawButtons, drawStatus, showDests, clearDests, select,
     setInteractive(v) { interactive = v; if (!v) { selFrom = null; clearDests(); } },
@@ -1475,7 +1552,7 @@ const RoomNet = (() => {
       else if (!had) hooks.status && hooks.status('back');
       // take any actions we haven't applied or queued yet, in order
       const log = Array.isArray(opp.presence.log) ? opp.presence.log : [];
-      for (const a of log.slice().sort((x, y) => x.s - y.s)) if (a && a.s === queued + 1) { queue.push(a); queued = a.s; }
+      for (const a of log.slice().sort((x, y) => x.s - y.s)) if (a && a.s === queued + 1) { if (a.t === 'bye') { queued = a.s; st.inSeq = a.s; hooks.status && hooks.status('left'); } else queue.push(a); queued = a.s; }
       deliver();
     } else if (had) hooks.status && hooks.status('gone');
   }
@@ -1582,7 +1659,10 @@ const FbNet = (() => {
       const a = s.val();
       if (!a || typeof a.s !== 'number' || a.s <= queued) return;
       buf.set(a.s, a);
-      while (buf.has(queued + 1)) { queue.push(buf.get(queued + 1)); buf.delete(queued + 1); queued++; }
+      while (buf.has(queued + 1)) {
+        const x = buf.get(queued + 1); buf.delete(queued + 1); queued++;
+        if (x.t === 'bye') { st.inSeq = queued; hooks.status && hooks.status('left'); } else queue.push(x);
+      }
       deliver();
     });
     offs.push(() => nref.off('value', h1), () => oref.off('value', h2), () => lref.off('child_added', h3));
@@ -1626,6 +1706,8 @@ const FbNet = (() => {
       reset(state, h);
       oppSeen = true;
       watchOnline(); watch();
+      // re-send our latest actions in case the page closed before they reached the server (same keys: harmless)
+      for (const act of st.out.slice(-8)) ref(st.role + '/log/' + act.s).set(act).catch(() => { });
       return st;
     },
     setHooks(h) { hooks = Object.assign(hooks, h); },
@@ -1877,6 +1959,18 @@ const Game = (() => {
   let lastBotIds = [];
   let resignOffered = 0;
   let pendingRecord = null; // move record in progress (tutor first attempt)
+  // Every new match, game, resume or game end bumps the epoch. Long-running turn flows (bot thinking,
+  // waiting for a friend, animations) note the epoch when they start and stop if it has moved on, so a
+  // flow from a finished or abandoned game can never touch the current one.
+  let epoch = 0;
+  let resignWanted = false; // a resignation offer is waiting for the dice to land: don't auto-play this turn
+  const stale = (ep) => ep !== epoch;
+  // clear everything belonging to a turn in progress (new game, new match, resume)
+  function resetTurnState() {
+    busy = false; turnInfo = null; partial = []; rem = []; pendingRecord = null; pendingCube = null;
+    if (ui._cubeResolve) ui._cubeResolve = null;
+    ui.clearTransient && ui.clearTransient();
+  }
   const ui = {}; // hooks set by UI layer
 
   const cur = () => M && M.cur;
@@ -1982,6 +2076,7 @@ const Game = (() => {
 
   /* ---------- match lifecycle ---------- */
   function newMatch(opts) {
+    epoch++;
     M = {
       id: 'm' + Date.now().toString(36), created: Date.now(), mode: opts.mode, matchTo: opts.matchTo, cubeOn: opts.cubeOn,
       jacoby: opts.jacoby, level: opts.level, score: [0, 0], crawfordUsed: false, games: [], cur: null, over: false, winner: null,
@@ -1991,6 +2086,8 @@ const Game = (() => {
     startGame();
   }
   function startGame() {
+    epoch++;
+    resetTurnState();
     const g = { no: M.games.length + 1, startScore: M.score.slice(), crawford: false, recs: [], result: null };
     if (M.matchTo && M.cubeOn && !M.crawfordUsed && (M.score[0] === M.matchTo - 1 || M.score[1] === M.matchTo - 1)) { g.crawford = true; M.crawfordUsed = true; }
     M.games.push(g);
@@ -2006,7 +2103,7 @@ const Game = (() => {
   function render(full) {
     const c = cur();
     board.setSpeed(SPEEDS[Settings.speed] || 1);
-    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots(), compact: boardCompact() });
+    board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, ...boardLayout() });
     board.drawCube({ on: M.cubeOn && !game().crawford, value: c.cube.value, owner: c.cube.owner });
     board.drawDice(null);
     board.drawButtons([]);
@@ -2016,6 +2113,7 @@ const Game = (() => {
 
   async function openingRoll() {
     if (friend()) return friendOpening();
+    const ep = epoch;
     phase = 'opening';
     busy = true;
     let a, b;
@@ -2023,8 +2121,10 @@ const Game = (() => {
       a = rollDie(); b = rollDie();
       await board.rollDice({ single: [[0, a], [1, b]] }, Settings.diceAnim ? 320 : 0);
       if (a === b) { ui.toast && ui.toast(`Both rolled ${a}. Rolling again`); await sleep(650); }
+      if (stale(ep)) { busy = false; return; }
     } while (a === b);
     await sleep(420);
+    if (stale(ep)) { busy = false; return; }
     const p = a > b ? 0 : 1;
     const dice = p === 0 ? [a, b] : [b, a];
     cur().opening = false;
@@ -2069,18 +2169,21 @@ const Game = (() => {
       const rec = { k: 'cube', p: 0, doubler: 0, action: 'nodouble', b: clone(cur().b), ctx: ctxFor(0) };
       game().recs.push(rec);
       if (M.mode === 'tutor') {
+        const ep = epoch;
         const a = await pendingCube;
         await analyseCube(rec, a);
+        if (stale(ep)) return;
         if (rec.loss != null && tutorFlag(rec.loss)) {
           phase = 'tutor';
           const choice = await ui.tutorCube(rec, 'nodouble');
+          if (stale(ep)) return;
           phase = 'rolling';
           if (choice === 'switch') { rec.tutorSwitched = true; return doDouble(true); }
         }
       } else if (pendingCube) pendingCube.then(a => analyseCube(rec, a)).catch(() => { });
     }
     const d = [rollDie(), rollDie()];
-    if (friend()) Net.send({ t: 'roll', d });
+    if (friend()) { const c = cur(); c.turn = 0; c.dice = d; save(); Net.send({ t: 'roll', d }); }
     await humanRolled(d, false);
   }
 
@@ -2100,26 +2203,31 @@ const Game = (() => {
       // shut out completely (no roll at all could move): skip straight on.
       // Otherwise show the roll so it is clear what was rolled, then pass the turn.
       if (!opening && !shutOut(me, opp)) {
+        const ep = epoch;
         busy = true;
         await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0);
         ui.toast && ui.toast('No legal move with ' + dice.join('-'));
         await sleep(1100);
         busy = false;
+        if (stale(ep)) return;
       }
       return commitHuman(true);
     }
-    if (!opening) { busy = true; await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0); busy = false; }
+    const ep = epoch;
+    if (!opening) { busy = true; await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0); busy = false; if (stale(ep)) return; }
     else board.drawDice(diceView(dice));
     save();
     ui.update && ui.update();
-    if (turnInfo.finals.size === 1 && Settings.autoForced) {
+    if (turnInfo.finals.size === 1 && Settings.autoForced && !resignWanted) {
       const seq = [...turnInfo.finals.values()][0];
       phase = 'auto';
       await sleep(250);
+      if (stale(ep)) return;
       busy = true;
-      for (const s of seq) await playStep(s.from, s.die, true);
+      for (const s of seq) { await playStep(s.from, s.die, true); if (stale(ep)) { busy = false; return; } }
       busy = false;
       await sleep(200);
+      if (stale(ep)) return;
       return commitHuman(true);
     }
     board.setInteractive(true);
@@ -2242,6 +2350,7 @@ const Game = (() => {
   function tutorFlag(loss) { return Settings.tutorAny ? loss > 0.001 : loss >= SKILL.doubtful; }
 
   async function commitHuman(forced) {
+    const ep = epoch;
     phase = 'committing';
     board.setInteractive(false);
     board.drawButtons([]);
@@ -2254,10 +2363,12 @@ const Game = (() => {
       board.drawStatus(0, 'Checking your move');
       await analyseMove(rec, null, true);
       board.drawStatus(0, '');
+      if (stale(ep)) return;
       rec.tutorDone = true;
       if (rec.an && tutorFlag(rec.an.loss)) {
         const choice = await ui.tutorMove(rec);
         board.drawArrows('');
+        if (stale(ep)) return;
         if (choice === 'retry') {
           if (partial.length) await undoAll();
           rec.retried = true;
@@ -2286,6 +2397,7 @@ const Game = (() => {
     if (checkWin(0)) return;
     save();
     await sleep(120);
+    if (stale(ep)) return;
     if (friend()) friendTurn(); else botTurn();
   }
   // play gnubg-style pairs for the human (used for tutor "best" / "keep")
@@ -2318,45 +2430,77 @@ const Game = (() => {
 
   async function doDouble(fromTutor) {
     if (!fromTutor && phase !== 'preroll') return;
+    const ep = epoch;
     phase = 'doubling';
     board.drawButtons([]);
     drawCubeNow(false);
+    if (friend()) {
+      // no need to wait for the analysis before offering: it is only for the review
+      const c = cur();
+      const rec = { k: 'cube', p: 0, doubler: 0, action: 'double', b: clone(c.b), ctx: ctxFor(0) };
+      game().recs.push(rec);
+      const pc = pendingCube;
+      if (pc) pc.then(a => analyseCube(rec, a)).catch(() => { });
+      Sound.play('cube');
+      c.offer = { k: 'dbl' };
+      Net.send({ t: 'dbl' });
+      save();
+      return awaitDoubleAnswer(null, pc);
+    }
     const a = await pendingCube;
+    if (stale(ep)) return;
     const rec = { k: 'cube', p: 0, doubler: 0, action: 'double', b: clone(cur().b), ctx: ctxFor(0) };
     await analyseCube(rec, a);
+    if (stale(ep)) return;
     if (!fromTutor) {
       game().recs.push(rec);
       if (M.mode === 'tutor' && rec.loss != null && tutorFlag(rec.loss)) {
         phase = 'tutor';
         const choice = await ui.tutorCube(rec, 'double');
+        if (stale(ep)) return;
         phase = 'doubling';
         if (choice === 'switch') { rec.tutorSwitched = true; return doRoll(true); }
       }
     }
-    phase = 'cubeOffer';
     const c = cur();
     Sound.play('cube');
+    phase = 'cubeOffer';
     board.drawCube({ on: true, value: c.cube.value, owner: c.cube.owner, offeredTo: 1, prev: null }, true);
-    let take;
-    if (friend()) {
-      Net.send({ t: 'dbl' });
-      board.drawStatus(1, `${oppName()} is deciding`);
-      let act;
-      do { act = await Net.next(); } while (act.t !== 'take' && act.t !== 'pass');
-      take = act.t === 'take';
-    } else {
-      board.drawStatus(1, 'Considering…');
-      await sleep(500);
-      // bot decides: take if doubler's equity when taken < when passed
-      take = rec.an ? rec.an.dt < rec.an.dp : true;
+    board.drawStatus(1, 'Considering…');
+    await sleep(500);
+    if (stale(ep)) return;
+    // bot decides: take if doubler's equity when taken < when passed
+    const take = rec.an ? rec.an.dt < rec.an.dp : true;
+    return afterDoubleAnswer(take, a);
+  }
+  // You doubled your friend: wait for take or pass (they may also resign instead of answering).
+  async function awaitDoubleAnswer(a, pc) {
+    const ep = epoch, c = cur();
+    phase = 'cubeOffer';
+    board.drawCube({ on: true, value: c.cube.value, owner: c.cube.owner, offeredTo: 1, prev: null }, true);
+    board.drawStatus(1, `${oppName()} is deciding`);
+    let act;
+    while (true) {
+      act = await Net.next();
+      if (stale(ep)) return;
+      if (act.t === 'take' || act.t === 'pass') break;
+      if (act.t === 'resign') { if (await answerResign(act.l)) return; board.drawStatus(1, `${oppName()} is deciding`); }
     }
+    c.offer = null;
+    if (!a) { try { a = await (pc || cubeCall(0, ctxFor(0))); } catch (e) { a = null; } if (stale(ep)) return; }
+    return afterDoubleAnswer(act.t === 'take', a);
+  }
+  async function afterDoubleAnswer(take, a) {
+    const ep = epoch, c = cur();
     const trec = { k: 'take', p: 1, doubler: 0, action: take ? 'take' : 'pass', b: clone(c.b), ctx: ctxFor(0) };
-    await analyseCube(trec, a);
+    if (a) await analyseCube(trec, a);
+    if (stale(ep)) return;
     game().recs.push(trec);
     board.drawStatus(1, '');
     if (!take) {
       ui.toast && ui.toast(`${oppName()} passes`);
       await sleep(500);
+      if (stale(ep)) return;
       return endGame(0, c.cube.value, 'pass');
     }
     ui.toast && ui.toast(`${oppName()} takes`);
@@ -2365,13 +2509,15 @@ const Game = (() => {
     save();
     ui.update && ui.update();
     await sleep(350);
+    if (stale(ep)) return;
     const d = [rollDie(), rollDie()];
-    if (friend()) Net.send({ t: 'roll', d });
+    if (friend()) { c.turn = 0; c.dice = d; save(); Net.send({ t: 'roll', d }); }
     await humanRolled(d, false);
   }
 
   /* ---------- bot turn ---------- */
   async function botTurn() {
+    const ep = epoch;
     phase = 'botTurn';
     const c = cur();
     c.turn = 1; c.dice = null;
@@ -2381,21 +2527,24 @@ const Game = (() => {
     let ca = null;
     if (canDouble(1)) {
       ca = await cubeCall(1, ctxFor(1), true);
+      if (stale(ep)) return;
       const rec = { k: 'cube', p: 1, doubler: 1, action: 'nodouble', b: clone(c.b), ctx: ctxFor(1) };
       const doubles = [0, 1, 5, 7, 8, 16, 17, 18, 19, 20].includes(ca.cd);
       rec.action = doubles ? 'double' : 'nodouble';
       await analyseCube(rec, ca);
+      if (stale(ep)) return;
       game().recs.push(rec);
       if (doubles) {
         const res = await humanCubeResponse(ca);
-        if (res === 'pass') return;
+        if (res !== 'take' || stale(ep)) return;
       }
     }
     // the bot resigns only when winning has become mathematically impossible
     const lvl = certainLoss(c.b[1], c.b[0]);
     if (lvl && lvl !== resignOffered) {
       resignOffered = lvl;
-      const ok = await ui.botResigns(lvl);
+      const ok = await ui.botResigns(lvl, 'Bot', lvl * c.cube.value);
+      if (stale(ep)) return;
       if (ok) return endGame(0, lvl, 'resign');
     }
     const d = [rollDie(), rollDie()];
@@ -2445,8 +2594,9 @@ const Game = (() => {
     }
     return turns;
   }
+  // The other side (bot or friend) has doubled you: take or pass. Returns 'take', 'pass' or null if the game moved on.
   async function humanCubeResponse(ca) {
-    const c = cur();
+    const ep = epoch, c = cur();
     phase = 'cubeOffer';
     Sound.play('cube');
     board.drawCube({ on: true, value: c.cube.value, owner: c.cube.owner, offeredTo: 0 }, true);
@@ -2458,12 +2608,15 @@ const Game = (() => {
       ]);
       ui.toast && ui.toast(`${oppName()} doubles to ${c.cube.value * 2}`);
     });
+    if (stale(ep)) return null;
     board.drawButtons([]);
     const rec = { k: 'take', p: 0, doubler: 1, action: choice, b: clone(c.b), ctx: ctxFor(1) };
     await analyseCube(rec, ca);
+    if (stale(ep)) return null;
     let final = choice;
     if (!friend() && M.mode === 'tutor' && rec.loss != null && tutorFlag(rec.loss)) {
       const t = await ui.tutorCube(rec, choice);
+      if (stale(ep)) return null;
       if (t === 'switch') { final = choice === 'take' ? 'pass' : 'take'; rec.tutorSwitched = true; }
     }
     game().recs.push(rec);
@@ -2474,20 +2627,24 @@ const Game = (() => {
     save();
     ui.update && ui.update();
     await sleep(250);
+    if (stale(ep)) return null;
     return 'take';
   }
 
   async function botPlay(dice, opening) {
+    const ep = epoch;
     phase = 'botTurn';
     const c = cur();
     c.turn = 1; c.dice = dice;
     ui.update && ui.update();
+    const bv = { p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] };
     if (!opening && R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal === 0) {
       // the bot cannot move: show the roll unless no roll at all could move, then go to your turn
       if (!shutOut(c.b[1], c.b[0])) {
-        await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
+        await board.rollDice(bv, Settings.diceAnim ? 300 : 0);
         ui.toast && ui.toast(oppName() + ' can’t move with ' + dice.join('-'));
         await sleep(1100);
+        if (stale(ep)) return;
         board.drawDice(null);
       }
       const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx: ctxFor(1), subs: [], forcedNone: true };
@@ -2497,19 +2654,22 @@ const Game = (() => {
       save();
       return humanPreRoll();
     }
-    if (!opening) await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
+    if (!opening) await board.rollDice(bv, Settings.diceAnim ? 300 : 0);
     else board.drawDice({ p: 1, vals: dice.slice(), used: [false, false], order: [0, 1] });
+    if (stale(ep)) return;
     const ctx = ctxFor(1);
     const me = c.b[1], opp = c.b[0];
     const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx, subs: [] };
     const t0 = performance.now();
-    let thinking = setTimeout(() => board.drawStatus(1, 'Thinking'), 500);
+    let thinking = setTimeout(() => { if (!stale(ep)) board.drawStatus(1, 'Thinking'); }, 500);
     let res;
     try { res = await Play.moves(opp, me, dice[0], dice[1], ctx, M.level || 5); }
-    catch (e) { ui.toast && ui.toast('Engine error: ' + e.message); return; }
-    clearTimeout(thinking); board.drawStatus(1, '');
+    catch (e) { clearTimeout(thinking); if (!stale(ep)) { board.drawStatus(1, ''); ui.toast && ui.toast('Engine error: ' + e.message); } return; }
+    clearTimeout(thinking);
+    if (stale(ep)) return;
+    board.drawStatus(1, '');
     const el = performance.now() - t0;
-    if (el < 380) await sleep(380 - el);
+    if (el < 380) { await sleep(380 - el); if (stale(ep)) return; }
     if (!res.moves.length) {
       rec.forcedNone = true;
     } else {
@@ -2521,6 +2681,7 @@ const Game = (() => {
         const sim = R.simulatePairs(c.b[1], c.b[0], [s.from, s.to]);
         c.b[1] = sim.me; c.b[0] = sim.opp;
         const id = await board.moveChecker(1, s.from, s.to, s.hit);
+        if (stale(ep)) return;
         ids.push(id);
         await sleep(60);
       }
@@ -2535,6 +2696,7 @@ const Game = (() => {
     if (rec.forcedNone) analyseMove(rec);
     game().recs.push(rec);
     await sleep(250);
+    if (stale(ep)) return;
     c.dice = null;
     board.drawDice(null);
     if (checkWin(1)) return;
@@ -2542,46 +2704,72 @@ const Game = (() => {
     humanPreRoll();
   }
 
-  /* ---------- friend (remote player) ---------- */
+  // Firebase may hand back an array as an object keyed 0,1,2…: accept either
+  const arr = (x) => Array.isArray(x) ? x : (x && typeof x === 'object' ? Object.keys(x).sort((a, b) => a - b).map(k => x[k]) : []);
+  const validDice = (d) => { d = arr(d).map(x => x | 0); return d.length === 2 && d.every(x => x >= 1 && x <= 6) ? d : null; };
+
+  /* ---------- friend (remote player) ----------
+     Each side rolls its own dice and sends what it does: open (host's opening roll), roll, move, dbl,
+     take, pass, resign (with the level), racc / rdec (resignation accepted / declined), rm / rmno (rematch).
+     Whatever we are waiting for, a resignation offer can arrive instead and is always answered. */
   function netHooks() {
     return {
       status: (k) => {
         if (k === 'gone') { ui.toast && ui.toast(`${oppName()} disconnected. Waiting for them to come back`); board.drawStatus(1, `Waiting for ${oppName()}`); }
         if (k === 'back') { ui.toast && ui.toast(`${oppName()} is back`); board.drawStatus(1, ''); }
+        if (k === 'left') {
+          if (M) { M.friendLeft = true; save(); }
+          if (rm) { rm.theirs = false; rm.mine = false; }
+          ui.friendLeft && ui.friendLeft(oppName());
+          if (M && !M.over) board.drawStatus(1, `${oppName()} left`);
+        }
         ui.update && ui.update();
       }
     };
   }
+  // They offer to resign. Returns true if you accepted (the game is then over).
+  async function answerResign(l) {
+    const ep = epoch, c = cur();
+    const ok = await ui.botResigns(l, oppName(), resignPoints(l));
+    if (stale(ep)) return true;
+    Net.send({ t: ok ? 'racc' : 'rdec' });
+    if (ok) { await endGame(0, l, 'resign'); return true; }
+    save();
+    return false;
+  }
   async function friendOpening() {
+    const ep = epoch;
     phase = 'opening';
     const c = cur();
-    let mine, theirs;
-    if (M.net.role === 'host') {
-      if (!c.openMsg) {
+    // the host rolls the opening for both; the guest waits for it. Either way it is kept, so a reload replays it.
+    if (!c.openMsg) {
+      if (M.net.role === 'host') {
         let a, b;
         do { a = rollDie(); b = rollDie(); } while (a === b);
         c.openMsg = { a, b };
         Net.send({ t: 'open', a, b, g: game().no });
-        save();
+      } else {
+        board.drawStatus(1, `Waiting for ${oppName()}`);
+        let act;
+        do { act = await Net.next(); if (stale(ep)) return; } while (act.t !== 'open');
+        board.drawStatus(1, '');
+        c.openMsg = { a: act.b | 0, b: act.a | 0 };   // a = my die, b = theirs
       }
-      mine = c.openMsg.a; theirs = c.openMsg.b;
-    } else {
-      board.drawStatus(1, `Waiting for ${oppName()}`);
-      let act;
-      do { act = await Net.next(); } while (act.t !== 'open');
-      board.drawStatus(1, '');
-      mine = act.b; theirs = act.a;
+      save();
     }
+    const mine = c.openMsg.a, theirs = c.openMsg.b;
     busy = true;
     await board.rollDice({ single: [[0, mine], [1, theirs]] }, Settings.diceAnim ? 320 : 0);
     await sleep(420);
     busy = false;
+    if (stale(ep)) return;
     c.opening = false;
     if (mine > theirs) await humanRolled([mine, theirs], true);
-    else { await remotePlay([theirs, mine], true); }
+    else { c.turn = 1; c.dice = [theirs, mine]; save(); await remotePlay([theirs, mine], true); }
   }
-  // Their turn: wait for what they do next (double, roll, resign).
+  // Their turn: wait for what they do next (double, roll or resign).
   async function friendTurn() {
+    const ep = epoch;
     phase = 'remote';
     const c = cur();
     c.turn = 1; c.dice = null;
@@ -2591,20 +2779,21 @@ const Game = (() => {
     board.drawStatus(1, Net.connected ? '' : `Waiting for ${oppName()}`);
     while (true) {
       const act = await Net.next();
+      if (stale(ep)) return;
       if (act.t === 'dbl') {
         const ca = await cubeCall(1, ctxFor(1));
+        if (stale(ep)) return;
         const rec = { k: 'cube', p: 1, doubler: 1, action: 'double', b: clone(c.b), ctx: ctxFor(1) };
         await analyseCube(rec, ca);
+        if (stale(ep)) return;
         game().recs.push(rec);
         const res = await humanCubeResponse(ca);
-        if (res === 'pass') return;
+        if (res !== 'take' || stale(ep)) return;
         phase = 'remote';
         continue;
       }
       if (act.t === 'resign') {
-        const ok = await ui.botResigns(act.l, oppName());
-        Net.send({ t: ok ? 'racc' : 'rdec' });
-        if (ok) return endGame(0, act.l, 'resign');
+        if (await answerResign(act.l)) return;
         continue;
       }
       if (act.t === 'roll') {
@@ -2613,7 +2802,11 @@ const Game = (() => {
           game().recs.push(rec);
           cubeCall(1, ctxFor(1)).then(a => analyseCube(rec, a)).catch(() => { });
         }
-        return remotePlay(act.d, false);
+        const d = validDice(act.d);
+        if (!d) continue;
+        c.dice = d;
+        save();
+        return remotePlay(c.dice, false);
       }
     }
   }
@@ -2622,7 +2815,9 @@ const Game = (() => {
     for (let a = 1; a <= 6; a++) for (let b = a; b <= 6; b++) if (R.turnInfo(me, opp, a, b).maxTotal > 0) return false;
     return true;
   }
+  // They have rolled: show the roll, then wait for their move (or a resignation offer).
   async function remotePlay(dice, opening) {
+    const ep = epoch;
     phase = 'remote';
     const c = cur();
     c.turn = 1; c.dice = dice;
@@ -2630,13 +2825,20 @@ const Game = (() => {
     const ctx = ctxFor(1);
     const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx, subs: [] };
     const canMove = R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal > 0;
+    const view = { p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] };
     if (canMove || !shutOut(c.b[1], c.b[0])) {
-      if (!opening) await board.rollDice({ p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] }, Settings.diceAnim ? 300 : 0);
-      else board.drawDice({ p: 1, vals: dice.slice(), used: [false, false], order: [0, 1] });
+      if (!opening) await board.rollDice(view, Settings.diceAnim ? 300 : 0);
+      else board.drawDice(view);
+      if (stale(ep)) return;
     }
     let act;
-    do { act = await Net.next(); } while (act.t !== 'move');
-    const pairs = Array.isArray(act.m) ? act.m.slice(0, 8).map(x => x | 0) : [];
+    while (true) {
+      act = await Net.next();
+      if (stale(ep)) return;
+      if (act.t === 'move') break;
+      if (act.t === 'resign') { if (await answerResign(act.l)) return; }
+    }
+    const pairs = arr(act.m).slice(0, 8).map(x => x | 0);
     if (!pairs.length) rec.forcedNone = true;
     else {
       const { subs } = R.simulatePairs(c.b[1], c.b[0], pairs);
@@ -2645,6 +2847,7 @@ const Game = (() => {
         const sim = R.simulatePairs(c.b[1], c.b[0], [s.from, s.to]);
         c.b[1] = sim.me; c.b[0] = sim.opp;
         ids.push(await board.moveChecker(1, s.from, s.to, s.hit));
+        if (stale(ep)) return;
         await sleep(60);
       }
       rec.subs = subs.map(s => ({ from: s.from, to: s.to, die: s.die, hit: s.hit }));
@@ -2653,11 +2856,12 @@ const Game = (() => {
     }
     analyseMove(rec);
     game().recs.push(rec);
-    await sleep(200);
     c.dice = null;
+    save();
+    await sleep(200);
+    if (stale(ep)) return;
     board.drawDice(null);
     if (checkWin(1)) return;
-    save();
     humanPreRoll();
   }
 
@@ -2671,6 +2875,8 @@ const Game = (() => {
     return true;
   }
   async function endGame(winner, points, how, lvl) {
+    if (phase === 'over') return;
+    epoch++;
     phase = 'over';
     board.setInteractive(false);
     board.drawButtons([]);
@@ -2725,7 +2931,7 @@ const Game = (() => {
   function requestRematch() {
     if (!M || !M.over) return null;
     if (!friend()) { startRematch(); return 'started'; }
-    if (!Net.state) { ui.toast && ui.toast(`${oppName()} has left`); return null; }
+    if (!Net.state || M.friendLeft) { ui.toast && ui.toast(`${oppName()} has left`); return null; }
     if (!rm || rm.M !== M) rematchListen(M);
     rm.mine = true;
     Net.send({ t: 'rm' });
@@ -2748,43 +2954,78 @@ const Game = (() => {
     Store.del('current');
   }
   function nextGame() { if (!M.over) startGame(); }
+  // leaving a friend game on purpose: tell them, so they are not left waiting
+  async function leaveFriend() {
+    if (!friend() || !Net.state) return;
+    epoch++;
+    try { if (!M.friendLeft) Net.send({ t: 'bye' }); } catch (e) { }
+    await sleep(150);
+    await Net.leave();
+  }
 
-  async function humanResign(lvl) {
-    if (!M || M.over || phase === 'over' || phase === 'opening') return false;
+  // what a resignation at level l (1 single, 2 gammon, 3 backgammon) is worth right now
+  function resignPoints(l) {
     const c = cur();
+    const jac = M.matchTo === 0 && M.jacoby && M.cubeOn && c.cube.value === 1 && c.cube.owner === -1;
+    return (jac ? 1 : l) * c.cube.value;
+  }
+  // You can offer to resign on your own turn: before rolling or while moving.
+  const canResignNow = () => !!(M && !M.over && (phase === 'preroll' || phase === 'moving'));
+  // (a roll in progress counts as your turn: the offer goes in as soon as the dice land)
+  const canOfferResign = () => canResignNow() || !!(M && !M.over && phase === 'rolling');
+  // the Resign card is open: don't auto-play a forced move meanwhile
+  function holdForResign(on) { if (phase !== 'resigning') resignWanted = !!on; }
+  // Returns true (accepted: game over), false (declined, play on) or 'notnow'.
+  async function humanResign(lvl) {
+    if (!canOfferResign()) return 'notnow';
+    resignWanted = true;
+    try { for (let i = 0; (busy || phase === 'rolling') && i < 80; i++) await sleep(50); } finally { resignWanted = false; }
+    if (!canResignNow() || busy) return 'notnow';
+    const ep = epoch, c = cur(), was = phase;
+    if (phase === 'moving' && partial.length) await undoAll();
+    if (stale(ep)) return false;
+    phase = 'resigning';
+    board.setInteractive(false);
+    let accept;
     if (friend()) {
-      if (!(phase === 'preroll' || phase === 'moving')) return 'notnow';
-      if (phase === 'moving' && partial.length) await undoAll();
-      const was = phase;
-      phase = 'resigning';
-      board.setInteractive(false);
+      c.offer = { k: 'resign', l: lvl };
       Net.send({ t: 'resign', l: lvl });
-      board.drawStatus(1, `${oppName()} is deciding`);
-      let act;
-      do { act = await Net.next(); } while (act.t !== 'racc' && act.t !== 'rdec');
-      board.drawStatus(1, '');
-      if (act.t === 'racc') { await endGame(1, lvl, 'resign'); return true; }
-      phase = was;
-      if (was === 'moving') { board.setInteractive(true); drawMoveButtons(); }
-      return false;
+      save();
+      accept = await awaitResignAnswer();
+      if (accept == null) return false;
+    } else {
+      // the bot evaluates from its own perspective as if on roll
+      const ctx = ctxFor(1);
+      let ev;
+      if (c.turn === 1 || c.turn === -1) ev = await Play.call('evaluate', c.b[0], c.b[1], ctx, aLevel());
+      else { const e0 = await Play.call('evaluate', c.b[1], c.b[0], ctxFor(0), aLevel()); ev = { eq: -e0.eq }; }
+      const val = await Engine.call('pointsEq', lvl, ctx);
+      if (stale(ep)) return false;
+      accept = val >= ev.eq - 1e-4;
     }
-    // bot evaluates from its own perspective as if on roll
-    const ctx = ctxFor(1);
-    let ev;
-    if (c.turn === 1 || c.turn === -1) ev = await Play.call('evaluate', c.b[0], c.b[1], ctx, aLevel());
-    else { const e0 = await Play.call('evaluate', c.b[1], c.b[0], ctxFor(0), aLevel()); ev = { eq: -e0.eq }; }
-    const val = await Engine.call('pointsEq', lvl, ctx);
-    const accept = val >= ev.eq - 1e-4;
-    if (accept) {
-      if (pendingRecord && phase === 'moving') { await undoAll(); }
-      board.setInteractive(false);
-      await endGame(1, lvl, 'resign');
-    }
-    return accept;
+    if (accept) { await endGame(1, lvl, 'resign'); return true; }
+    // declined: back to where you were
+    phase = was;
+    if (was === 'moving') { board.setInteractive(true); drawMoveButtons(); }
+    else { board.drawButtons(prerollButtons(canDouble(0))); drawCubeNow(canDouble(0)); }
+    return false;
+  }
+  // You offered your friend a resignation: wait for their answer. true / false, or null if the game moved on.
+  async function awaitResignAnswer() {
+    const ep = epoch, c = cur();
+    board.drawStatus(1, `${oppName()} is deciding`);
+    let act;
+    do { act = await Net.next(); if (stale(ep)) return null; } while (act.t !== 'racc' && act.t !== 'rdec');
+    board.drawStatus(1, '');
+    c.offer = null;
+    save();
+    return act.t === 'racc';
   }
 
   /* ---------- resume ---------- */
   async function resume(saved) {
+    epoch++;
+    resetTurnState();
     M = saved;
     render(true);
     ui.update && ui.update();
@@ -2794,10 +3035,25 @@ const Game = (() => {
       try { await Net.resume(M.net, netHooks()); M.net = Net.state; }
       catch (e) { ui.toast && ui.toast('Can’t reconnect to your friend here'); return; }
       if (c.opening || c.turn === -1) return friendOpening();
-      if (c.turn === 0) { if (c.dice) return humanRolled(c.dice, true); return humanPreRoll(); }
+      if (c.turn === 0) {
+        // an offer was out when the page closed: keep waiting for the answer
+        if (c.offer && c.offer.k === 'dbl') { pendingCube = null; return awaitDoubleAnswer(null); }
+        if (c.offer && c.offer.k === 'resign') {
+          phase = 'resigning';
+          const lvl = c.offer.l;
+          const ok = await awaitResignAnswer();
+          if (ok == null) return;
+          if (ok) return endGame(1, lvl, 'resign');
+          ui.toast && ui.toast(`${oppName()} declines your resignation`);
+        }
+        if (c.dice) return humanRolled(c.dice, true);
+        return humanPreRoll();
+      }
+      if (c.dice) return remotePlay(c.dice, true);
       return friendTurn();
     }
     if (c.opening || c.turn === -1) return openingRoll();
+    c.offer = null;
     if (c.turn === 0) { if (c.dice) return humanRolled(c.dice, true); return humanPreRoll(); }
     return botTurn();
   }
@@ -2831,7 +3087,8 @@ const Game = (() => {
 
   return {
     attach(b, hooks) { board = b; Object.assign(ui, hooks); },
-    newMatch, resume, nextGame, humanResign, stats, ensureAnalysis, band, requestRematch, declineRematch,
+    newMatch, resume, nextGame, leaveFriend, humanResign, holdForResign, stats, ensureAnalysis, band, requestRematch, declineRematch, resignPoints,
+    get canResignNow() { return canOfferResign(); },
     get rematchAsked() { return !!(rm && rm.M === M && rm.theirs); },
     get M() { return M; }, get phase() { return phase; }, get busy() { return busy; }, previewBest,
     canPick, dests, tap, drop, undo, diceTap, swapDice,
@@ -2856,13 +3113,9 @@ const Game = (() => {
     redraw() {
       if (!M) return;
       const c = cur();
-      const sel = { dice: c.dice, phase };
       board.setSpeed(SPEEDS[Settings.speed] || 1);
-      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots(), compact: boardCompact() });
-      drawCubeNow(phase === 'preroll' && canDouble(0));
-      if (phase === 'moving') drawMoveButtons();
-      if (phase === 'preroll') board.drawButtons(prerollButtons(canDouble(0)));
-      else if (c.dice) board.drawDice({ p: c.turn === 1 ? 1 : 0, vals: c.dice.slice(), used: [false, false], order: [0, 1] });
+      // the board keeps its own dice, cube, buttons, status and arrows across a rebuild
+      board.rebuild(c.b, { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, ...boardLayout() });
       board.setMarked(lastBotIds);
     },
     pips() { if (!M || !M.cur) return null; return [R.pips(M.cur.b[0]), R.pips(M.cur.b[1])]; },
@@ -2870,6 +3123,7 @@ const Game = (() => {
     get isFriend() { return friend(); },
     get oppName() { return M ? (friend() ? Net.oppName : 'Bot') : 'Bot'; },
     debugRestart() { render(true); humanRolled(cur().dice, true); },
+    debugTurnStart() { return pendingRecord ? pendingRecord.b : cur().b; },
     certainLoss
   };
 })();
@@ -2894,24 +3148,39 @@ function isPortrait() {
   const r = st.getBoundingClientRect();
   return r.height > r.width * 1.05;
 }
-function boardRot() {
-  document.getElementById('app').classList.toggle('portrait', isPortrait());
-  return 0;
-}
-// How many checkers fit on a point before stacks compress: chosen so the board fills the space
-// (taller on phones held upright, shorter and wider on phones held sideways).
-function boardSlots() {
+// One place decides how the board is drawn for the space available, from scratch each time:
+// upright phones get the compact frame with the controls underneath; everything else the standard frame.
+// The point length (checkers before a stack squeezes) and the exact pixel size follow from the space.
+// Nothing here changes the board itself; board.rebuild applies it.
+const ACTBAR_SPACE = 78; // big buttons + dice under the board on upright phones
+function boardLayout() {
+  const app = document.getElementById('app');
+  const portrait = isPortrait();
+  app.classList.toggle('portrait', portrait);
   const bx = document.querySelector('.boardbox');
-  if (!bx || typeof G === 'undefined') return 5;
-  const r = bx.getBoundingClientRect();
-  if (!r.width || !r.height) return 5;
-  const portrait = document.getElementById('app').classList.contains('portrait');
-  const h = r.height - (portrait ? 84 : 0);
-  // upright phones: a slimmer frame and points no longer than 7 checkers, so the board keeps real proportions
-  G.setFrame(portrait);
-  return G.bestSlots(r.width, Math.max(120, h), portrait ? 7 : 10);
+  const r = bx ? bx.getBoundingClientRect() : { width: 0, height: 0 };
+  const compact = portrait;
+  // upright phones: room for the control bar under the board, or for the tutor panel while it is open
+  const tu = document.getElementById('tutor');
+  const reserve = !portrait ? 0 : (tu && !tu.hidden ? tu.offsetHeight + 14 : ACTBAR_SPACE);
+  const w = Math.max(200, r.width || 0), h = Math.max(140, (r.height || 0) - reserve);
+  const W = G.widthOf(compact);
+  if (portrait) {
+    // upright phones: the board spans the width; points stay a natural length (6 checkers) and the
+    // middle strip (dice, cube, messages) grows to use the height, like a real board seen from above
+    const k = w / W, CD = G.frameOf(true).CD;
+    let slots = 6, room = h / k - 2 * G.frameOf(true).FV;
+    while (slots > 4 && room - 2 * slots * CD < 100) slots--;
+    while (slots < 8 && room - 2 * slots * CD > 400) slots++;   // very tall screens: a little longer points
+    const mid = Math.max(100, Math.min(420, Math.round(room - 2 * slots * CD)));
+    const H = G.heightOf(true, slots, mid), kk = Math.min(k, h / H);
+    return { rot: 0, compact, slots, mid, px: { w: W * kk, h: H * kk } };
+  }
+  const slots = G.bestSlots(w, h, 10, compact);
+  const H = G.heightOf(compact, slots);
+  const k = Math.min(w / W, h / H);
+  return { rot: 0, compact, slots, mid: 0, px: { w: W * k, h: H * k } };
 }
-const boardCompact = () => document.getElementById('app').classList.contains('portrait');
 const dotStyle = (p) => `background:${(p === 0) === Settings.humanLight ? '#f2efe9' : '#1a1d21'}`;
 
 const UI = (() => {
@@ -2988,7 +3257,7 @@ const UI = (() => {
   }
   function showSetup() {
     const saved = Store.get('current', null);
-    const canResume = saved && !saved.over && saved.cur && (!Game.M || Game.M.id !== saved.id || Game.M.over);
+    const canResume = saved && !saved.over && !saved.friendLeft && saved.cur && (!Game.M || Game.M.id !== saved.id || Game.M.over);
     const hist = Store.get('history', []).slice(0, 4);
     const st = setupState;
     const html = `
@@ -3043,7 +3312,7 @@ const UI = (() => {
       Sound.unlock();
       Store.set('setup', st);
       closeCard();
-      if (Game.M && Game.M.opp === 'friend') Net.leave();
+      if (Game.M && Game.M.opp === 'friend') Game.leaveFriend();
       Game.newMatch({ mode: st.mode, matchTo: st.format === 'single' ? 0 : st.len, cubeOn: st.cube, jacoby: st.format === 'single' && st.cube && st.jacoby, level: Settings.level });
     };
     if (canResume) $('#resume').onclick = () => { closeCard(); Game.resume(saved); };
@@ -3064,7 +3333,7 @@ const UI = (() => {
     return why + ' (Details: ' + String(code).slice(0, 160) + ')';
   }
   async function hostFriend(cfg, name) {
-    if (Game.M && Game.M.opp === 'friend') await Net.leave();
+    if (Game.M && Game.M.opp === 'friend') await Game.leaveFriend();
     const desc = `${cfg.matchTo ? cfg.matchTo + '-point match' : 'Single game'} · ${cfg.cubeOn ? 'with cube' : 'no cube'}${cfg.jacoby ? ' · Jacoby' : ''}`;
     let started = false;
     let st;
@@ -3092,7 +3361,7 @@ const UI = (() => {
     $('#cCancel').onclick = async () => { started = true; await Net.leave(); closeCard(); showSetup(); };
   }
   async function joinFriend(code, name) {
-    if (Game.M && Game.M.opp === 'friend') await Net.leave();
+    if (Game.M && Game.M.opp === 'friend') await Game.leaveFriend();
     let started = false;
     openCard(`<h2>Joining ${esc(code)}</h2><p class="sub">Looking for your friend’s game…</p>
       <div class="row" style="justify-content:space-between"><span class="loading"><span class="spin"></span>Connecting</span><button class="btnx" id="jCancel">Cancel</button></div>`, { dismiss: false });
@@ -3126,9 +3395,10 @@ const UI = (() => {
   }
 
   /* ---------- menu ---------- */
+  let menuAnchor = null;
   function showMenu(anchor) {
-    closeMenu();
-    const r = anchor.getBoundingClientRect();
+    if ($('#menu')) { closeMenu(); return; }   // the button toggles it
+    menuAnchor = anchor;
     const m = document.createElement('div');
     m.className = 'menu'; m.id = 'menu'; m.setAttribute('role', 'menu');
     const live = Game.M && !Game.M.over && Game.phase !== 'over';
@@ -3138,10 +3408,8 @@ const UI = (() => {
       <div class="sep"></div>
       <button role="menuitem" data-a="settings">${ICON.gear}Settings</button>`;
     document.body.appendChild(m);
-    const w = m.offsetWidth;
-    m.style.top = (r.bottom + 6) + 'px';
-    m.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
-    m.querySelector('button').focus();
+    placeMenu();
+    m.querySelector('button').focus({ preventScroll: true });
     m.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       closeMenu();
@@ -3152,24 +3420,62 @@ const UI = (() => {
     });
     setTimeout(() => document.addEventListener('pointerdown', outside), 0);
   }
-  function outside(e) { const m = $('#menu'); if (m && !m.contains(e.target)) closeMenu(); }
+  // Keep the menu fully on screen whatever the layout: below the button if it fits, else above,
+  // else beside it (the side column on a phone held sideways), clamped to the visible area.
+  function placeMenu() {
+    const m = $('#menu'); if (!m || !menuAnchor) return;
+    const vv = window.visualViewport;
+    const vw = Math.min(window.innerWidth, vv ? vv.width + vv.offsetLeft : 1e9);
+    const vh = Math.min(window.innerHeight, vv ? vv.height + vv.offsetTop : 1e9);
+    const pad = 8, gap = 6;
+    m.style.maxHeight = (vh - 2 * pad) + 'px';
+    const r = menuAnchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+    let top, left;
+    const column = getComputedStyle(document.querySelector('.topbar')).flexDirection === 'column';
+    if (column && r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; }   // beside the side column
+    else if (r.bottom + gap + h <= vh - pad) { top = r.bottom + gap; left = r.right - w; }
+    else if (r.top - gap - h >= pad) { top = r.top - gap - h; left = r.right - w; }
+    else if (r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; }
+    else { left = r.right + gap; top = r.bottom - h; }
+    m.style.left = Math.max(pad, Math.min(vw - w - pad, left)) + 'px';
+    m.style.top = Math.max(pad, Math.min(vh - h - pad, top)) + 'px';
+  }
+  function outside(e) { const m = $('#menu'); if (m && !m.contains(e.target) && !(menuAnchor && menuAnchor.contains(e.target))) closeMenu(); }
   function closeMenu() { const m = $('#menu'); if (m) m.remove(); document.removeEventListener('pointerdown', outside); }
 
   function showResign() {
-    const c = Game.M.cur;
-    const cube = c ? c.cube.value : 1;
-    const s = openCard(`<h2>Resign</h2><p class="sub">${Game.isFriend ? esc(Game.oppName) + ' can accept or decline.' : 'The bot accepts only if your offer is at least what it expects to win.'}</p>
+    const M = Game.M;
+    if (!M || !M.cur || M.over) return;
+    const now = Game.canResignNow, fr = Game.isFriend, name = esc(Game.oppName);
+    const pts = (l) => { const n = Game.resignPoints(l); return `${n} point${n > 1 ? 's' : ''}`; };
+    const s = openCard(`<h2>Resign</h2><p class="sub">${fr ? name + ' can accept or decline.' : 'The bot accepts only if your offer is at least what it expects to win.'}</p>
+      <div class="rmnote" id="rsNote" ${now ? 'hidden' : ''}>You can offer to resign on your own turn, before you roll or while you move.</div>
       <div class="list">
-        <button class="histitem" data-l="1"><span class="grow"><span><b>Single game</b></span><span>${1 * cube} point${cube > 1 ? 's' : ''}</span></span></button>
-        <button class="histitem" data-l="2"><span class="grow"><span><b>Gammon</b></span><span>${2 * cube} points</span></span></button>
-        <button class="histitem" data-l="3"><span class="grow"><span><b>Backgammon</b></span><span>${3 * cube} points</span></span></button>
+        <button class="histitem" data-l="1" ${now ? '' : 'disabled'}><span class="grow"><span><b>Single game</b></span><span>${pts(1)}</span></span></button>
+        <button class="histitem" data-l="2" ${now ? '' : 'disabled'}><span class="grow"><span><b>Gammon</b></span><span>${pts(2)}</span></span></button>
+        <button class="histitem" data-l="3" ${now ? '' : 'disabled'}><span class="grow"><span><b>Backgammon</b></span><span>${pts(3)}</span></span></button>
       </div><div class="row" style="justify-content:flex-end"><button class="btnx" id="rsCancel">Keep playing</button></div>`);
+    // While the card is open: hold off auto-playing a forced move (so the turn isn't over before you can
+    // choose), and keep the options in step with whose turn it is.
+    Game.holdForResign(true);
+    const tick = setInterval(() => {
+      if (!s.isConnected) { clearInterval(tick); Game.holdForResign(false); return; }
+      const ok = Game.canResignNow;
+      s.querySelectorAll('[data-l]').forEach(b => { b.disabled = !ok; });
+      const n = s.querySelector('#rsNote'); if (n) n.hidden = ok;
+    }, 200);
     s.querySelectorAll('[data-l]').forEach(b => b.onclick = async () => {
-      s.querySelectorAll('button').forEach(x => x.disabled = true);
-      const ok = await Game.humanResign(+b.dataset.l);
-      closeCard();
+      clearInterval(tick);
+      const lvl = +b.dataset.l;
+      // a small waiting card; the game-over card replaces it if the offer is accepted
+      const wait = openCard(`<h2>Resigning</h2><p class="sub">${fr ? `Waiting for ${name} to accept or decline.` : 'Asking the bot…'}</p>
+        <div class="row" style="justify-content:space-between"><span class="loading"><span class="spin"></span>${fr ? 'Waiting' : 'Thinking'}</span>${fr ? '<button class="btnx" id="rsHide">Hide</button>' : ''}</div>`, { dismiss: false });
+      const hide = wait.querySelector('#rsHide'); if (hide) hide.onclick = () => closeCard();
+      const ok = await Game.humanResign(lvl);
+      Game.holdForResign(false);
+      if ($('#scrim') === wait) closeCard();
       if (ok === 'notnow') toast('You can resign on your own turn');
-      else if (!ok) toast(`${Game.oppName} declines your resignation`);
+      else if (ok === false) toast(`${Game.oppName} declines. Play on`);
     });
     $('#rsCancel').onclick = closeCard;
   }
@@ -3208,9 +3514,11 @@ const UI = (() => {
   function banner(html) {
     const t = $('#tutor');
     t.innerHTML = html; t.hidden = false;
+    document.getElementById('app').classList.add('tutoring');
+    relayout();
     return t;
   }
-  function hideBanner() { const t = $('#tutor'); t.hidden = true; t.innerHTML = ''; }
+  function hideBanner() { const t = $('#tutor'); if (t.hidden) return; t.hidden = true; t.innerHTML = ''; document.getElementById('app').classList.remove('tutoring'); relayout(); }
   function chipFor(loss) { const b = band(loss); return `<span class="chip ${b}">${BAND_LABEL[b]}</span>`; }
 
   function tutorMove(rec) {
@@ -3271,10 +3579,10 @@ const UI = (() => {
     });
   }
 
-  function botResigns(lvl, who) {
+  function botResigns(lvl, who, pts) {
     return new Promise(res => {
       const names = ['', 'a single game', 'a gammon', 'a backgammon'];
-      const s = openCard(`<h2>${esc(who || 'Bot')} resigns</h2><p class="sub">${esc(who || 'The bot')} offers to concede ${names[lvl]}.</p>
+      const s = openCard(`<h2>${esc(who || 'Bot')} resigns</h2><p class="sub">${esc(who || 'The bot')} offers to concede ${names[lvl]}${pts ? ` (${pts} point${pts > 1 ? 's' : ''})` : ''}. Accept to win ${pts ? 'those points' : 'the game'} now, or play on.</p>
         <div class="row" style="justify-content:flex-end"><button class="btnx" id="brNo">Play on</button><button class="btnx primary" id="brYes" autofocus>Accept</button></div>`, { dismiss: false });
       $('#brYes').onclick = () => { closeCard(); res(true); };
       $('#brNo').onclick = () => { closeCard(); res(false); };
@@ -3324,6 +3632,18 @@ const UI = (() => {
     </div>`;
   }
 
+  // the friend left on purpose (started something else)
+  function friendLeft(name) {
+    const el = $('#goRm');
+    if (el) { el.hidden = false; el.innerHTML = `${esc(name)} has left, so a rematch isn’t possible. Start a new game from New match.`; const b = $('#goNext'); if (b && Game.M && Game.M.over) b.disabled = true; return; }
+    if (Game.M && !Game.M.over) {
+      openCard(`<h2>${esc(name)} has left</h2><p class="sub">They started something else, so this match can’t carry on. You can review it or start a new one.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btnx" id="flReview">Review</button><button class="btnx primary" id="flNew" autofocus>New match</button></div>`, { dismiss: false });
+      $('#flReview').onclick = () => { closeCard(); const M = Game.M; Review.open(M, M.games.length > 1 ? 'all' : 0); };
+      $('#flNew').onclick = () => { closeCard(); showSetup(); };
+    } else toast(`${name} has left`);
+  }
+
   /* ---------- rematch ---------- */
   function rmDesc(M) { return `${M.matchTo ? M.matchTo + '-point match' : 'single game'}${M.cubeOn ? '' : ', no cube'}`; }
   function rematch() {
@@ -3360,13 +3680,24 @@ const UI = (() => {
     if (state === 'declined') { el.innerHTML = `${name} doesn’t want a rematch right now.`; if (btn) { btn.disabled = false; btn.textContent = 'Ask again'; } }
   }
 
+  /* ---------- board layout ---------- */
+  function idleBoard() { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, ...boardLayout() }); board.drawCube({ on: true, value: 1, owner: -1 }); }
+  function relayout() {
+    if (!board) return;
+    const L = boardLayout();
+    renderBar();
+    placeMenu();
+    if (L.slots !== board.slots || L.compact !== board.compact || (L.mid || 0) !== (board.mid || 0)) { if (Game.M && Game.M.cur) Game.redraw(); else idleBoard(); }
+    else board.size(L.px.w, L.px.h);
+  }
+
   /* ---------- boot ---------- */
   function init() {
     $('#btnMenu').innerHTML = ICON.menu;
     $('#btnReview').innerHTML = ICON.chart + '<span class="lt">Review</span>';
     $('.brand').insertAdjacentHTML('afterbegin', ICON.logo);
     $('#btnMenu').onclick = (e) => showMenu(e.currentTarget);
-    $('#btnReview').onclick = () => { if (Game.M && Game.M.opp === 'friend' && !Game.M.over && Game.phase !== 'over') { toast('Analysis opens when the game ends'); return; } if (Game.M) Review.open(Game.M, Game.M.games.length > 1 ? 'all' : 0); else { const h = Store.get('history', [])[0]; if (h) Review.open(h); else toast('Play a game first'); } };
+    $('#btnReview').onclick = () => { if (Game.M && Game.M.opp === 'friend' && !Game.M.over && Game.phase !== 'over' && !Game.M.friendLeft) { toast('Analysis opens when the game ends'); return; } if (Game.M) Review.open(Game.M, Game.M.games.length > 1 ? 'all' : 0); else { const h = Store.get('history', [])[0]; if (h) Review.open(h); else toast('Play a game first'); } };
     board = createBoard($('#board'), {
       canPick: (f) => Game.canPick(f),
       cantPick: () => { if (Game.phase === 'moving' && !Game.busy) toast('That checker can’t move'); },
@@ -3381,35 +3712,23 @@ const UI = (() => {
       sound: (k) => Sound.play(k)
     });
     Sound.on = Settings.sound;
-    Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver, rematch: rematchUI });
+    Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver, rematch: rematchUI, clearTransient: () => { hideBanner(); closeMenu(); }, friendLeft });
     document.addEventListener('keydown', (e) => {
       if ($('#scrim') || !$('#review').hidden || $('#menu')) { if (e.key === 'Escape') { closeMenu(); if (!$('#review').hidden) Review.back(); } return; }
       if (!$('#tutor').hidden) return;
       Game.key(e);
     });
     // initial board behind the setup card
-    board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: boardRot(), slots: boardSlots(), compact: boardCompact() });
-    board.drawCube({ on: true, value: 1, owner: -1 });
+    idleBoard();
     update();
-    // re-orient the board when the screen shape changes (e.g. phone rotation)
-    let lastRot = board.rot, rt;
-    const onResize = () => {
-      clearTimeout(rt);
-      rt = setTimeout(function retry() {
-        const was = document.getElementById('app').classList.contains('portrait');
-        const r = boardRot();
-        const now = document.getElementById('app').classList.contains('portrait');
-        renderBar();
-        const sl = boardSlots();
-        if (r === lastRot && was === now && sl === board.slots) return;
-        if (Game.busy || (Game.M && ['opening', 'auto', 'botTurn', 'committing'].includes(Game.phase))) { rt = setTimeout(retry, 300); return; }
-        lastRot = r;
-        if (Game.M) Game.redraw();
-        else { board.rebuild([R.startSide(), R.startSide()], { flip: Settings.flip, humanLight: Settings.humanLight, pips: Settings.pips, rot: r, slots: sl, compact: boardCompact() }); board.drawCube({ on: true, value: 1, owner: -1 }); }
-      }, 150);
-    };
+    // Re-lay the board out whenever the screen changes shape (rotation, browser bars, split screen).
+    // Phones report rotation in several steps, so check again a little later as well.
+    let timers = [];
+    const onResize = () => { timers.forEach(clearTimeout); timers = [0, 120, 350, 800].map(ms => setTimeout(relayout, ms)); };
     window.addEventListener('resize', onResize);
-    if (window.ResizeObserver) new ResizeObserver(onResize).observe(document.querySelector('.boardbox'));
+    window.addEventListener('orientationchange', onResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+    if (window.ResizeObserver) new ResizeObserver(onResize).observe(document.querySelector('.stage'));
     const hot = window.claude && window.claude.hot;
     if (hot && hot.snapshot) hot.snapshot(() => ({ M: Game.M }));
     const start = (data) => {
@@ -3443,7 +3762,7 @@ const UI = (() => {
     el.hidden = false;
     el.onclick = (e) => { const x = e.target.closest('[data-b]'); if (x) Game.button(x.dataset.b); };
   }
-  return { init, toast, update, showSetup, closeCard, renderBar };
+  return { init, toast, update, showSetup, closeCard, renderBar, placeMenu };
 })();
 
 /* ===================== REVIEW ===================== */
