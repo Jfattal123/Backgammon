@@ -150,32 +150,67 @@ const fmtLoss = (x) => x > 0.0005 ? '−' + x.toFixed(3) : '0.000';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 /* ===================== SOUND ===================== */
+// Everything is synthesised (no audio files): checkers are a bright tick over a short hollow knock, like wood on wood.
 const Sound = (() => {
-  let ctx = null, on = true;
-  function ac() { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } } return ctx; }
-  function tone(f, d, type = 'sine', vol = .08, when = 0) {
-    const c = ac(); if (!c) return;
-    const o = c.createOscillator(), g = c.createGain();
-    o.type = type; o.frequency.value = f;
-    g.gain.setValueAtTime(vol, c.currentTime + when);
-    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + when + d);
-    o.connect(g); g.connect(c.destination); o.start(c.currentTime + when); o.stop(c.currentTime + when + d + .02);
+  let ctx = null, on = true, out = null, nbuf = null;
+  function ac() {
+    if (!ctx) {
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        out = ctx.createDynamicsCompressor(); out.threshold.value = -16; out.ratio.value = 5; out.attack.value = .002; out.release.value = .12;
+        out.connect(ctx.destination);
+        nbuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+        const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      } catch (e) { ctx = null; }
+    }
+    return ctx;
   }
-  function noise(d, vol = .06, when = 0, hp = 1200) {
+  const jit = (v, a = .07) => v * (1 + (Math.random() * 2 - 1) * a);
+  function tone(f, d, o = {}) {
     const c = ac(); if (!c) return;
-    const len = Math.floor(c.sampleRate * d), buf = c.createBuffer(1, len, c.sampleRate), data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-    const s = c.createBufferSource(), g = c.createGain(), f = c.createBiquadFilter();
-    f.type = 'highpass'; f.frequency.value = hp;
-    s.buffer = buf; g.gain.value = vol; s.connect(f); f.connect(g); g.connect(c.destination); s.start(c.currentTime + when);
+    const t = c.currentTime + (o.when || 0), osc = c.createOscillator(), g = c.createGain();
+    osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(f, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + d);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(o.vol || .08, t + (o.attack || .004)); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    osc.connect(g); g.connect(out); osc.start(t); osc.stop(t + d + .03);
   }
-  function play(kind) {
-    if (!on) return;
-    if (kind === 'place') { tone(190, .07, 'triangle', .07); noise(.025, .05, 0, 2500); }
-    else if (kind === 'hit') { tone(140, .12, 'triangle', .1); noise(.05, .07, 0, 1500); }
-    else if (kind === 'off') { tone(320, .08, 'sine', .05); }
-    else if (kind === 'dice') { for (let i = 0; i < 4; i++) noise(.03, .05, i * .045, 3000); }
-    else if (kind === 'cube') { tone(240, .09, 'square', .03); }
+  // a short burst of filtered noise
+  function click(d, o = {}) {
+    const c = ac(); if (!c) return;
+    const t = c.currentTime + (o.when || 0), src = c.createBufferSource(), g = c.createGain(), f = c.createBiquadFilter();
+    src.buffer = nbuf; f.type = o.type || 'bandpass'; f.frequency.value = o.f || 1800; f.Q.value = o.q || 1;
+    g.gain.setValueAtTime(o.vol || .06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    src.connect(f); f.connect(g); g.connect(out); src.start(t, Math.random() * .9, d + .02);
+  }
+  function clack(vol = 1, when = 0, pitch = 1) {
+    click(.02, { vol: .2 * vol, when, f: jit(2700 * pitch), q: .8 });
+    click(.055, { vol: .13 * vol, when, f: jit(840 * pitch), q: 2.4 });
+    tone(jit(215 * pitch), .075, { vol: .11 * vol, when, to: 118 * pitch });
+  }
+  const bell = (f, when, vol = .06, d = .55) => { tone(f, d, { type: 'triangle', vol, when, attack: .008 }); tone(f * 2, d * .6, { vol: vol * .35, when, attack: .008 }); };
+  const SOUNDS = {
+    place: () => clack(1),
+    pick: () => click(.012, { vol: .05, f: 3400, q: .7 }),
+    hit: () => { clack(1.3, 0, .78); clack(.75, .06, 1.12); },
+    off: () => { clack(.7, 0, 1.32); tone(1320, .16, { vol: .018, when: .015 }); },
+    dice: () => { let t = 0; for (let i = 0; i < 6; i++) { click(.018, { vol: .1 + Math.random() * .06, when: t, f: jit(3300, .25), q: 1.4 }); t += .035 + Math.random() * .04; } clack(.55, t + .02, 1.7); clack(.5, t + .07, 1.9); },
+    deal: () => { for (let i = 0; i < 9; i++) clack(.42 + Math.random() * .2, i * .05 + Math.random() * .02, 1.05 + Math.random() * .3); },
+    cube: () => { clack(1, 0, .6); tone(330, .16, { type: 'triangle', vol: .03, when: .01 }); },
+    win: () => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => bell(f, i * .085)),
+    matchwin: () => { [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => bell(f, i * .095, .06, .7)); [523.25, 783.99, 1046.5, 1568].forEach(f => bell(f, .62, .045, 1.2)); },
+    lose: () => { tone(392, .4, { type: 'triangle', vol: .05, attack: .01 }); tone(311.1, .6, { type: 'triangle', vol: .05, when: .2, attack: .01 }); },
+    turn: () => bell(880, 0, .03, .3)
+  };
+  // a matching tap on phones that support it (your own moves, hits and wins only)
+  const BUZZ = { place: 8, off: 10, hit: [14, 40, 22], win: [18, 50, 18, 50, 40], matchwin: [20, 50, 20, 50, 20, 50, 70], cube: 12 };
+  function buzz(kind, p) {
+    if (!BUZZ[kind] || (p === 1 && kind !== 'hit') || typeof Settings === 'undefined' || Settings.haptics === false) return;
+    try { if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate(BUZZ[kind]); } catch (e) { }
+  }
+  function play(kind, p) {
+    buzz(kind, p);
+    if (!on || !SOUNDS[kind]) return;
+    try { SOUNDS[kind](); } catch (e) { }
   }
   return { play, set on(v) { on = v; if (v) ac(); }, get on() { return on; }, unlock() { const c = ac(); if (c && c.state === 'suspended') c.resume(); } };
 })();
@@ -187,11 +222,12 @@ const Store = {
   del(k) { try { localStorage.removeItem('prime.v1.' + k); } catch (e) { } }
 };
 
-const DEFAULT_SETTINGS = { level: 7, diceHighFirst: true, tutorAny: true, speed: 'normal', diceAnim: true, autoForced: true, autoRoll: true, flip: false, pips: true, sound: true, humanLight: true };
+const DEFAULT_SETTINGS = { level: 7, diceHighFirst: true, tutorAny: true, speed: 'normal', diceAnim: true, autoForced: true, autoRoll: true, flip: false, pips: true, sound: true, haptics: true, humanLight: true };
 let Settings = Object.assign({}, DEFAULT_SETTINGS, Store.get('settings', {}));
 if (!Settings.v2) { Settings.level = 7; Settings.v2 = true; Store.set('settings', Settings); } // Grandmaster is now the default
 Settings.flip = false; // always: you move from top right round to bottom right
 const SPEEDS = { fast: .6, normal: 1, slow: 1.5 };
+const DICE_MS = 460;   // a throw at normal speed
 
 /* ===================== GAME CONTROLLER ===================== */
 const Game = (() => {
@@ -343,6 +379,7 @@ const Game = (() => {
     resignOffered = 0;
     lastBotIds = [];
     render(true);
+    dealMs = board.dealIn() || 0;
     save();
     ui.update && ui.update();
     openingRoll();
@@ -359,15 +396,17 @@ const Game = (() => {
     board.drawArrows('');
   }
 
+  let dealMs = 0;   // how long the checkers take to be dealt onto the board
   async function openingRoll() {
     if (friend()) return friendOpening();
     const ep = epoch;
     phase = 'opening';
     busy = true;
+    if (dealMs) { const w = dealMs * 0.85; dealMs = 0; await sleep(w); if (stale(ep)) { busy = false; return; } }
     let a, b;
     do {
       a = rollDie(); b = rollDie();
-      await board.rollDice({ single: [[0, a], [1, b]] }, Settings.diceAnim ? 320 : 0);
+      await board.rollDice({ single: [[0, a], [1, b]] }, Settings.diceAnim ? DICE_MS : 0);
       if (a === b) { ui.toast && ui.toast(`Both rolled ${a}. Rolling again`); await sleep(650); }
       if (stale(ep)) { busy = false; return; }
     } while (a === b);
@@ -453,7 +492,7 @@ const Game = (() => {
       if (!opening && !shutOut(me, opp)) {
         const ep = epoch;
         busy = true;
-        await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0);
+        await board.rollDice(diceView(dice), Settings.diceAnim ? DICE_MS : 0);
         ui.toast && ui.toast('No legal move with ' + dice.join('-'));
         await sleep(1100);
         busy = false;
@@ -462,7 +501,7 @@ const Game = (() => {
       return commitHuman(true);
     }
     const ep = epoch;
-    if (!opening) { busy = true; await board.rollDice(diceView(dice), Settings.diceAnim ? 300 : 0); busy = false; if (stale(ep)) return; }
+    if (!opening) { busy = true; await board.rollDice(diceView(dice), Settings.diceAnim ? DICE_MS : 0); busy = false; if (stale(ep)) return; }
     else board.drawDice(diceView(dice));
     save();
     ui.update && ui.update();
@@ -889,7 +928,7 @@ const Game = (() => {
     if (!opening && R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal === 0) {
       // the bot cannot move: show the roll unless no roll at all could move, then go to your turn
       if (!shutOut(c.b[1], c.b[0])) {
-        await board.rollDice(bv, Settings.diceAnim ? 300 : 0);
+        await board.rollDice(bv, Settings.diceAnim ? DICE_MS : 0);
         ui.toast && ui.toast(oppName() + ' can’t move with ' + dice.join('-'));
         await sleep(1100);
         if (stale(ep)) return;
@@ -902,7 +941,7 @@ const Game = (() => {
       save();
       return humanPreRoll();
     }
-    if (!opening) await board.rollDice(bv, Settings.diceAnim ? 300 : 0);
+    if (!opening) await board.rollDice(bv, Settings.diceAnim ? DICE_MS : 0);
     else board.drawDice({ p: 1, vals: dice.slice(), used: [false, false], order: [0, 1] });
     if (stale(ep)) return;
     const ctx = ctxFor(1);
@@ -1007,7 +1046,7 @@ const Game = (() => {
     }
     const mine = c.openMsg.a, theirs = c.openMsg.b;
     busy = true;
-    await board.rollDice({ single: [[0, mine], [1, theirs]] }, Settings.diceAnim ? 320 : 0);
+    await board.rollDice({ single: [[0, mine], [1, theirs]] }, Settings.diceAnim ? DICE_MS : 0);
     await sleep(420);
     busy = false;
     if (stale(ep)) return;
@@ -1075,7 +1114,7 @@ const Game = (() => {
     const canMove = R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]).maxTotal > 0;
     const view = { p: 1, vals: dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice(), used: [false, false, false, false], order: [0, 1] };
     if (canMove || !shutOut(c.b[1], c.b[0])) {
-      if (!opening) await board.rollDice(view, Settings.diceAnim ? 300 : 0);
+      if (!opening) await board.rollDice(view, Settings.diceAnim ? DICE_MS : 0);
       else board.drawDice(view);
       if (stale(ep)) return;
     }
@@ -1144,6 +1183,7 @@ const Game = (() => {
     save();
     ui.update && ui.update();
     await sleep(350);
+    Sound.play(winner === 0 ? (M.over && M.matchTo ? 'matchwin' : 'win') : 'lose');
     ui.gameOver && ui.gameOver(g, M);
     if (M.over) { archive(); if (friend()) rematchListen(M); }
   }
@@ -1372,6 +1412,7 @@ const Game = (() => {
     get oppName() { return M ? (friend() ? Net.oppName : 'Bot') : 'Bot'; },
     debugRestart() { render(true); humanRolled(cur().dice, true); },
     debugTurnStart() { return pendingRecord ? pendingRecord.b : cur().b; },
+    debugWin(w = 0, pts = 2) { return endGame(w, pts, pts === 2 ? 'gammon' : 'single'); },
     certainLoss
   };
 })();

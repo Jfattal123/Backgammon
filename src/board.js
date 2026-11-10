@@ -115,98 +115,123 @@ function pipDots(v) {
 function checkerColors(p, humanLight) {
   const light = (p === 0) === humanLight;
   return light
-    ? { fill: 'url(#gLight)', rim: 'var(--chk-light-rim)', ring: 'rgba(0,0,0,.11)', ring2: 'rgba(255,255,255,.7)', slab: '#e9e4da', slabRim: '#b9b3a8', text: '#1a1d21' }
-    : { fill: 'url(#gDark)', rim: 'var(--chk-dark-rim)', ring: 'rgba(0,0,0,.45)', ring2: 'rgba(255,255,255,.07)', slab: '#2a2e33', slabRim: '#4a5058', text: '#f2efe9' };
+    ? { fill: 'url(#gLight)', dish: 'url(#gLightDish)', rim: '#aea695', ring: 'rgba(92,80,62,.30)', ring2: 'rgba(255,255,255,.9)', spec: 'rgba(255,255,255,.95)', slab: 'url(#gSlabL)', slabRim: '#b3ac9f', text: '#1a1d21' }
+    : { fill: 'url(#gDark)', dish: 'url(#gDarkDish)', rim: '#0b0d0f', ring: 'rgba(0,0,0,.62)', ring2: 'rgba(255,255,255,.10)', spec: 'rgba(255,255,255,.26)', slab: 'url(#gSlabD)', slabRim: '#50565f', text: '#f2efe9' };
 }
 function diceColors(p, humanLight) {
   const light = (p === 0) === humanLight;
-  return light ? { face: '#f7f4ee', edge: '#c9c2b6', pip: '#1a1d21' } : { face: '#24282d', edge: '#3d434b', pip: '#f2efe9' };
+  return light ? { face: 'url(#gDieL)', edge: '#c4bcae', pip: '#1a1d21', hi: 'rgba(255,255,255,.85)' } : { face: 'url(#gDieD)', edge: '#111316', pip: '#f2efe9', hi: 'rgba(255,255,255,.13)' };
 }
 
 // Static board base (frame, field, points, numbers, tray, rail)
-function boardBaseSVG(flip, opts = {}) {
-  const g = geo(flip);
-  let s = '';
-  s += `<defs>
-    <radialGradient id="gLight" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f1ede6"/><stop offset="1" stop-color="#d9d3c8"/></radialGradient>
-    <radialGradient id="gDark" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#4b5159"/><stop offset=".5" stop-color="#22262b"/><stop offset="1" stop-color="#121417"/></radialGradient>
-    <linearGradient id="gFrame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d2e32"/><stop offset="1" stop-color="#142124"/></linearGradient>
-    <linearGradient id="gField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#263c42"/><stop offset=".5" stop-color="#1f3338"/><stop offset="1" stop-color="#263c42"/></linearGradient>
-    <linearGradient id="gBar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#16252a"/><stop offset=".5" stop-color="#1d2f34"/><stop offset="1" stop-color="#16252a"/></linearGradient>
-    <linearGradient id="gPtAt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c7d85"/><stop offset="1" stop-color="#35606a"/></linearGradient>
-    <linearGradient id="gPtAb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4c7d85"/><stop offset="1" stop-color="#35606a"/></linearGradient>
-    <linearGradient id="gPtBt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dac9ad"/><stop offset="1" stop-color="#b7a383"/></linearGradient>
-    <linearGradient id="gPtBb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#dac9ad"/><stop offset="1" stop-color="#b7a383"/></linearGradient>
+const BOARD_DEFS = `<defs>
+    <radialGradient id="gLight" cx="36%" cy="28%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#f3efe7"/><stop offset="1" stop-color="#cfc8ba"/></radialGradient>
+    <radialGradient id="gDark" cx="36%" cy="28%" r="82%"><stop offset="0" stop-color="#5a616b"/><stop offset=".45" stop-color="#272b31"/><stop offset="1" stop-color="#0d0f12"/></radialGradient>
+    <linearGradient id="gLightDish" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8d1c4"/><stop offset=".55" stop-color="#efeae1"/><stop offset="1" stop-color="#fdfbf7"/></linearGradient>
+    <linearGradient id="gDarkDish" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e1013"/><stop offset=".55" stop-color="#1e2227"/><stop offset="1" stop-color="#3a4048"/></linearGradient>
+    <radialGradient id="gSh"><stop offset=".6" stop-color="#000" stop-opacity=".5"/><stop offset=".84" stop-color="#000" stop-opacity=".2"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gSlabL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbf8f2"/><stop offset="1" stop-color="#d6cfc2"/></linearGradient>
+    <linearGradient id="gSlabD" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#41474f"/><stop offset="1" stop-color="#1b1e22"/></linearGradient>
+    <linearGradient id="gDieL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e7e1d5"/></linearGradient>
+    <linearGradient id="gDieD" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4149"/><stop offset="1" stop-color="#1a1d21"/></linearGradient>
+    <linearGradient id="gCube" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdfaf3"/><stop offset="1" stop-color="#e2dac9"/></linearGradient>
+    <linearGradient id="gFrame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#21353a"/><stop offset=".5" stop-color="#182a2e"/><stop offset="1" stop-color="#101d20"/></linearGradient>
+    <linearGradient id="gField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#274047"/><stop offset=".5" stop-color="#20363c"/><stop offset="1" stop-color="#274047"/></linearGradient>
+    <radialGradient id="gGlow" cx="50%" cy="50%" r="78%"><stop offset="0" stop-color="#fff" stop-opacity=".06"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".2"/></radialGradient>
+    <linearGradient id="gLip" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".34"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>
+    <linearGradient id="gBar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#132227"/><stop offset=".12" stop-color="#24393f"/><stop offset=".5" stop-color="#1c2f34"/><stop offset=".88" stop-color="#24393f"/><stop offset="1" stop-color="#132227"/></linearGradient>
+    <linearGradient id="gBrass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3c27d"/><stop offset=".5" stop-color="#b8924a"/><stop offset="1" stop-color="#8a6a2e"/></linearGradient>
+    <linearGradient id="gPtAt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#528790"/><stop offset="1" stop-color="#34606a"/></linearGradient>
+    <linearGradient id="gPtAb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#528790"/><stop offset="1" stop-color="#34606a"/></linearGradient>
+    <linearGradient id="gPtBt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2d2b7"/><stop offset="1" stop-color="#b9a585"/></linearGradient>
+    <linearGradient id="gPtBb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#e2d2b7"/><stop offset="1" stop-color="#b9a585"/></linearGradient>
     <filter id="fShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2.5" stdDeviation="2.2" flood-color="#000" flood-opacity=".38"/></filter>
-    <filter id="fLift" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="10" stdDeviation="7" flood-color="#000" flood-opacity=".42"/></filter>
     <marker id="mArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f2b84b"/></marker>
     <marker id="mArrowG" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5fd39b"/></marker>
   </defs>`;
-  // frame, with a faint inner highlight so it reads as a raised edge
+function boardBaseSVG(flip, opts = {}) {
+  const g = geo(flip);
+  let s = BOARD_DEFS;
+  // frame: a raised edge, lit from above
   s += `<rect x="0" y="0" width="${G.W}" height="${G.H}" rx="${G.RX}" fill="url(#gFrame)"/>`;
-  s += `<rect x=".75" y=".75" width="${G.W - 1.5}" height="${G.H - 1.5}" rx="${G.RX - .75}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1.5"/>`;
-  // field halves (inset)
+  s += `<rect x=".75" y=".75" width="${G.W - 1.5}" height="${G.H - 1.5}" rx="${G.RX - .75}" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="1.5"/>`;
+  // the two wells the checkers sit in
   const lx = g.mx(G.FL), rx = g.mx(G.XR);
   const hx = (x) => flip ? x - 6 * G.PW : x;
-  for (const x0 of [hx(lx), hx(rx)]) {
-    s += `<rect x="${x0}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="5" fill="url(#gField)"/>`;
-  }
-  // bar, with a centre seam
+  const wells = [hx(lx), hx(rx)];
+  for (const x0 of wells) s += `<rect x="${x0}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="5" fill="url(#gField)"/>`;
+  // bar: a raised spine with a seam (and hinges where there is room for them)
   const bx = g.mx(G.BARX);
   s += `<rect x="${bx - G.BAR / 2 + 5}" y="${G.FV}" width="${G.BAR - 10}" height="${G.FH}" rx="5" fill="url(#gBar)"/>`;
-  s += `<line x1="${bx}" y1="${G.FV + 6}" x2="${bx}" y2="${G.H - G.FV - 6}" stroke="rgba(0,0,0,.28)" stroke-width="1.5"/>`;
+  s += `<line x1="${bx}" y1="${G.FV + 6}" x2="${bx}" y2="${G.H - G.FV - 6}" stroke="rgba(0,0,0,.34)" stroke-width="1.5"/>`;
+  if (!G.COMPACT) for (const hy of [G.FV + G.FH * 0.085, G.H - G.FV - G.FH * 0.085]) {
+    s += `<rect x="${bx - 9}" y="${hy - 17}" width="18" height="34" rx="3.5" fill="url(#gBrass)" stroke="rgba(0,0,0,.4)" stroke-width="1"/><line x1="${bx}" y1="${hy - 16}" x2="${bx}" y2="${hy + 16}" stroke="rgba(0,0,0,.35)" stroke-width="1.2"/>`;
+    for (const dy of [-10, 10]) s += `<circle cx="${bx - 4.6}" cy="${hy + dy}" r="1.5" fill="rgba(60,42,12,.7)"/><circle cx="${bx + 4.6}" cy="${hy + dy}" r="1.5" fill="rgba(60,42,12,.7)"/>`;
+  }
   // bear-off trays
   const tx = g.mx(G.TRAYX) - G.TIN / 2;
-  for (const y0 of [G.FV, G.MIDY + 6]) s += `<rect x="${tx}" y="${y0}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="#111d20" stroke="rgba(0,0,0,.25)" stroke-width="1"/>`;
+  for (const y0 of [G.FV, G.MIDY + 6]) {
+    s += `<rect x="${tx}" y="${y0}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="#0e191c" stroke="rgba(0,0,0,.3)" stroke-width="1"/>`;
+    s += `<rect x="${tx}" y="${y0}" width="${G.TIN}" height="12" rx="5" fill="url(#gLip)"/>`;
+  }
   // points, with softened tips
   for (let i = 0; i < 24; i++) {
     const x = g.ptX(i), top = g.isTop(i), dir = top ? 1 : -1;
     const y0 = top ? G.FV : G.H - G.FV, y1 = top ? G.FV + G.PL - 6 : G.H - G.FV - G.PL + 6;
     const c = i % 2 === 0 ? (top ? 'url(#gPtAt)' : 'url(#gPtAb)') : (top ? 'url(#gPtBt)' : 'url(#gPtBb)');
     const hw = G.PW / 2 - 4;
-    s += `<path d="M${x - hw},${y0} L${x - 3},${y1 - dir * 7} Q${x},${y1 + dir} ${x + 3},${y1 - dir * 7} L${x + hw},${y0} Z" fill="${c}"/>`;
+    s += `<path d="M${x - hw},${y0} L${x - 3},${y1 - dir * 7} Q${x},${y1 + dir} ${x + 3},${y1 - dir * 7} L${x + hw},${y0} Z" fill="${c}" stroke="rgba(255,255,255,.07)" stroke-width="1"/>`;
     if (opts.numbers !== false) {
       const fs = G.TXT;
       const ny = top ? G.FV / 2 + fs * 0.36 : G.H - G.FV / 2 + fs * 0.36;
       s += `<text class="ptnum" x="${x}" y="${ny}" text-anchor="middle" style="font-size:${fs}px">${i + 1}</text>`;
     }
   }
-  // field edges: a soft inner shadow over the points
-  for (const x0 of [hx(lx), hx(rx)]) {
-    s += `<rect x="${x0 + .75}" y="${G.FV + .75}" width="${6 * G.PW - 1.5}" height="${G.FH - 1.5}" rx="5" fill="none" stroke="rgba(0,0,0,.32)" stroke-width="1.5"/>`;
+  // lighting: a soft pool of light in each well, darker towards its corners, and the shadow its top lip casts
+  for (const x0 of wells) {
+    s += `<rect x="${x0}" y="${G.FV}" width="${6 * G.PW}" height="${G.FH}" rx="5" fill="url(#gGlow)" pointer-events="none"/>`;
+    s += `<rect x="${x0}" y="${G.FV}" width="${6 * G.PW}" height="16" rx="5" fill="url(#gLip)" pointer-events="none"/>`;
+    s += `<rect x="${x0 + .75}" y="${G.FV + .75}" width="${6 * G.PW - 1.5}" height="${G.FH - 1.5}" rx="5" fill="none" stroke="rgba(0,0,0,.4)" stroke-width="1.5"/>`;
   }
   return s;
 }
 
 function checkerSVG(id, p, humanLight, x, y, inTray) {
   const c = checkerColors(p, humanLight);
-  const r = G.CD / 2 - 1;
+  const r = G.CD / 2 - 1, d = r * 0.7;
+  // the shadow is a soft-edged disc under the checker (far cheaper to animate than a blur filter)
   return `<g class="chk${inTray ? ' tray' : ''}" data-id="${id}" data-p="${p}" transform="translate(${x},${y})">
-    <g class="disc" ${inTray ? 'style="display:none"' : ''} filter="url(#fShadow)">
-      <circle r="${r}" fill="${c.fill}" stroke="${c.rim}" stroke-width="1.5"/>
-      <circle r="${r * 0.66}" fill="none" stroke="${c.ring}" stroke-width="1.6"/>
-      <circle r="${r * 0.66 - 1.6}" fill="none" stroke="${c.ring2}" stroke-width="1"/>
+    <circle class="sh" ${inTray ? 'style="display:none"' : ''} cy="2.5" r="${r + 3.5}" fill="url(#gSh)"/>
+    <g class="disc" ${inTray ? 'style="display:none"' : ''}>
+      <circle class="body" r="${r}" fill="${c.fill}" stroke="${c.rim}" stroke-width="1.2"/>
+      <circle r="${d}" fill="${c.dish}"/>
+      <circle r="${d}" fill="none" stroke="${c.ring}" stroke-width="1.5"/>
+      <circle r="${d - 1.7}" fill="none" stroke="${c.ring2}" stroke-width="1" opacity=".55"/>
+      <circle r="${r * 0.4}" fill="none" stroke="${c.ring}" stroke-width="1.2" opacity=".5"/>
+      <path d="M${-r * 0.8},${-r * 0.36} A${r * 0.88},${r * 0.88} 0 0 1 ${-r * 0.1},${-r * 0.87}" fill="none" stroke="${c.spec}" stroke-width="2" stroke-linecap="round"/>
     </g>
-    <rect class="slab" ${inTray ? '' : 'style="display:none"'} x="${-G.SLAB / 2}" y="-6" width="${G.SLAB}" height="12" rx="3" fill="${c.slab}" stroke="${c.slabRim}" stroke-width="1"/>
+    <g class="slab" ${inTray ? '' : 'style="display:none"'}><rect x="${-G.SLAB / 2}" y="-6" width="${G.SLAB}" height="12" rx="3" fill="${c.slab}" stroke="${c.slabRim}" stroke-width="1"/></g>
   </g>`;
 }
 
 function dieSVG(cx, cy, v, col, opts = {}) {
-  const sz = opts.size || 52, r = 10;
+  const sz = opts.size || 52, r = 11 * sz / 52;
   const op = opts.used ? .32 : 1;
-  let s = `<g class="die" transform="translate(${cx},${cy})${opts.rot ? ` rotate(${opts.rot})` : ''}" opacity="${op}">`;
-  s += `<rect x="${-sz / 2}" y="${-sz / 2}" width="${sz}" height="${sz}" rx="${r}" fill="${col.face}" stroke="${col.edge}" stroke-width="1.5" filter="url(#fShadow)"/>`;
+  let s = `<g class="die" transform="translate(${cx},${cy})${opts.rot ? ` rotate(${opts.rot})` : ''}${opts.sc && opts.sc !== 1 ? ` scale(${opts.sc})` : ''}" opacity="${op}">`;
+  s += `<rect x="${-sz / 2}" y="${-sz / 2}" width="${sz}" height="${sz}" rx="${r}" fill="${col.face}" stroke="${col.edge}" stroke-width="1.2" filter="url(#fShadow)"/>`;
+  s += `<rect x="${-sz / 2 + 2.2}" y="${-sz / 2 + 2.2}" width="${sz - 4.4}" height="${sz - 4.4}" rx="${r - 2}" fill="none" stroke="${col.hi}" stroke-width="1.2"/>`;
   const k = sz / 52;
-  for (const [dx, dy] of pipDots(v)) s += `<circle cx="${dx * k}" cy="${dy * k}" r="${4.6 * k}" fill="${col.pip}"/>`;
+  for (const [dx, dy] of pipDots(v)) s += `<circle cx="${dx * k}" cy="${dy * k}" r="${4.7 * k}" fill="${col.pip}"/>`;
   s += `</g>`;
   return s;
 }
 
 function cubeSVG(x, y, value, size = 46) {
   const v = value || 64;
-  const fs = v >= 100 ? 15 : v >= 10 ? 19 : 22;
+  const fs = (v >= 100 ? 15 : v >= 10 ? 19 : 22) * size / 46;
   return `<g class="cube" transform="translate(${x},${y})">
-    <rect x="${-size / 2}" y="${-size / 2}" width="${size}" height="${size}" rx="8" fill="#f4efe4" stroke="#c7bfae" stroke-width="1.5" filter="url(#fShadow)"/>
+    <rect x="${-size / 2}" y="${-size / 2}" width="${size}" height="${size}" rx="9" fill="url(#gCube)" stroke="#b9b09d" stroke-width="1.2" filter="url(#fShadow)"/>
+    <rect x="${-size / 2 + 3}" y="${-size / 2 + 3}" width="${size - 6}" height="${size - 6}" rx="6.5" fill="none" stroke="rgba(184,146,74,.55)" stroke-width="1.2"/>
     <text y="${fs * 0.36}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="#1a1d21" style="font-family:var(--font-num)">${v}</text>
   </g>`;
 }
@@ -309,7 +334,10 @@ function createBoard(svg, cb) {
 
   let root = svg;
   // explicit pixel size: no reliance on how each browser sizes an SVG from its viewBox
-  function size(w, h) { svg.style.width = Math.max(1, Math.floor(w)) + 'px'; svg.style.height = Math.max(1, Math.floor(h)) + 'px'; }
+  function size(w, h) {
+    svg.style.width = Math.max(1, Math.floor(w)) + 'px'; svg.style.height = Math.max(1, Math.floor(h)) + 'px';
+    svg.style.borderRadius = (G.RX * w / G.W).toFixed(1) + 'px';   // so the (cheap) CSS shadow follows the frame's corners
+  }
   function build() {
     gen++;
     selFrom = null; dests = null; drag = null;
@@ -318,9 +346,9 @@ function createBoard(svg, cb) {
     g = geo(eflip);
     svg.setAttribute('viewBox', rot ? `0 0 ${G.H} ${G.W}` : `0 0 ${G.W} ${G.H}`);
     svg.innerHTML = `<g id="root"${rot ? ` transform="matrix(0,-1,1,0,0,${G.W})"` : ''}>` + boardBaseSVG(eflip) +
-      `<g id="lyHint"></g><g id="lyPips"></g><g id="lyChk"></g><g id="lyArrows"></g><g id="lyDice"></g><g id="lyCube"></g><g id="lyBtn"></g><g id="lyDrag"></g></g>`;
+      `<g id="lyHint"></g><g id="lyPips"></g><g id="lyChk"></g><g id="lyFx" pointer-events="none"></g><g id="lyArrows"></g><g id="lyDice"></g><g id="lyCube"></g><g id="lyBtn"></g><g id="lyDrag"></g></g>`;
     root = svg.querySelector('#root');
-    layers = { hint: svg.querySelector('#lyHint'), pips: svg.querySelector('#lyPips'), chk: svg.querySelector('#lyChk'), arrows: svg.querySelector('#lyArrows'), dice: svg.querySelector('#lyDice'), cube: svg.querySelector('#lyCube'), btn: svg.querySelector('#lyBtn'), drag: svg.querySelector('#lyDrag') };
+    layers = { hint: svg.querySelector('#lyHint'), pips: svg.querySelector('#lyPips'), chk: svg.querySelector('#lyChk'), fx: svg.querySelector('#lyFx'), arrows: svg.querySelector('#lyArrows'), dice: svg.querySelector('#lyDice'), cube: svg.querySelector('#lyCube'), btn: svg.querySelector('#lyBtn'), drag: svg.querySelector('#lyDrag') };
   }
 
   function setPositions(b) {
@@ -408,35 +436,72 @@ function createBoard(svg, cb) {
   }
 
   const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  // checkers leave briskly and settle softly
+  const glide = (t) => 1 - Math.pow(1 - Math.pow(t, 1.25), 3);
   function setXY(id, x, y, scale) {
     const el = els.get(id);
     el.setAttribute('transform', `translate(${x},${y})${scale && scale !== 1 ? ` scale(${scale})` : ''}`);
     posOf.set(id, { x, y });
+  }
+  // How far a checker is off the board (0 resting .. 1 held): its shadow drops away and softens
+  function setLift(el, L) {
+    const sh = el && el.querySelector('.sh'); if (!sh) return;
+    const r = G.CD / 2 - 1;
+    sh.setAttribute('cy', (2.5 + 10 * L).toFixed(2)); sh.setAttribute('r', (r + 3.5 + 6 * L).toFixed(2)); sh.setAttribute('opacity', (1 - 0.32 * L).toFixed(3));
+  }
+  // a small squash as a checker lands
+  function settle(el) {
+    const disc = el && el.querySelector('.disc');
+    if (reduceMotion || !disc || !disc.animate) return;
+    disc.animate([{ transform: 'scale(1)' }, { transform: 'scale(.95)', offset: .35 }, { transform: 'scale(1.025)', offset: .7 }, { transform: 'scale(1)' }], { duration: 210 * Math.max(.7, speed), easing: 'ease-out' });
+  }
+  // "no": a checker that can't move shakes its head
+  function nudge(el) {
+    const disc = el && el.querySelector('.disc');
+    if (reduceMotion || !disc || !disc.animate) return;
+    disc.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(-2px)' }, { transform: 'translateX(0)' }], { duration: 260, easing: 'ease-out' });
+  }
+  // an expanding ring (a hit, a checker reaching the tray)
+  function fxRing(x, y, o = {}) {
+    if (reduceMotion || !layers.fx) return;
+    const r0 = o.r || G.CD / 2, k = o.k || 1.9, ms = (o.ms || 420), col = o.col || '#f2b84b', my = gen;
+    const c = document.createElementNS(SVGNS, 'circle');
+    c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('fill', o.fill || 'none'); c.setAttribute('stroke', col);
+    layers.fx.appendChild(c);
+    const t0 = performance.now();
+    (function step(now) {
+      const t = Math.max(0, Math.min(1, (now - t0) / ms));
+      if (my !== gen || t >= 1) { c.remove(); return; }
+      const e = 1 - Math.pow(1 - t, 3);
+      c.setAttribute('r', (r0 * (1 + (k - 1) * e)).toFixed(2)); c.setAttribute('opacity', (0.9 * (1 - t)).toFixed(3)); c.setAttribute('stroke-width', (3.5 * (1 - t) + .5).toFixed(2));
+      requestAnimationFrame(step);
+    })(t0);
   }
   function animateTo(id, pt, dur, lift, endScale) {
     const el = els.get(id);
     const from = posOf.get(id) || pt;
     dur = reduceMotion ? 0 : dur * speed;
     if (!el) return Promise.resolve();
-    if (dur <= 0) { setXY(id, pt.x, pt.y); return Promise.resolve(); }
+    if (dur <= 0) { setXY(id, pt.x, pt.y); setLift(el, 0); return Promise.resolve(); }
     if (lift) layers.drag.appendChild(el);
-    const disc = el.querySelector('.disc');
-    if (lift && disc) disc.setAttribute('filter', 'url(#fLift)');
+    // a longer journey lifts higher; a checker already in the hand (dragged) comes down from there
+    const dist = Math.hypot(pt.x - from.x, pt.y - from.y);
+    const peak = lift ? Math.min(1, 0.45 + dist / (G.PW * 9)) : 0;
+    const held = lift === 'held';
     const my = gen;
     return new Promise(res => {
       const t0 = performance.now();
       function step(now) {
         if (my !== gen) return res();   // the board was rebuilt underneath us: stop
-        const t = Math.min(1, (now - t0) / dur), e = ease(t);
+        const t = Math.max(0, Math.min(1, (now - t0) / dur)), e = lift ? glide(t) : ease(t);
         const x = from.x + (pt.x - from.x) * e, y = from.y + (pt.y - from.y) * e;
-        let sc = lift ? 1 + 0.09 * Math.sin(Math.PI * t) : 1;
+        const L = held ? 1 - e : peak * Math.sin(Math.PI * Math.min(1, t * 1.04));
+        let sc = 1 + (held ? 0.1 : 0.11) * Math.max(0, L);
         if (endScale) sc *= 1 + (endScale - 1) * e;
         setXY(id, x, y, sc);
+        if (lift) setLift(el, Math.max(0, L));
         if (t < 1) requestAnimationFrame(step);
-        else {
-          if (lift && disc) disc.setAttribute('filter', 'url(#fShadow)');
-          res();
-        }
+        else { if (lift) { setLift(el, 0); if (!endScale) settle(el); } res(); }
       }
       requestAnimationFrame(step);
     });
@@ -447,7 +512,29 @@ function createBoard(svg, cb) {
     if (inTray) { const r = el.querySelector('.mk'); if (r) r.remove(); }
     el.classList.toggle('tray', inTray);
     el.querySelector('.disc').style.display = inTray ? 'none' : '';
+    el.querySelector('.sh').style.display = inTray ? 'none' : '';
     el.querySelector('.slab').style.display = inTray ? '' : 'none';
+  }
+
+  // Deal the checkers onto the board, stack by stack (start of a game). Purely cosmetic: positions are already final.
+  function dealIn() {
+    if (reduceMotion) return 0;
+    let col = 0, last = 0;
+    const keys = [...stacks.keys()].filter(k => k.startsWith('pt')).sort((a, b) => g.ptX(+a.slice(2)) - g.ptX(+b.slice(2)));
+    for (const k of keys) {
+      const ids = stacks.get(k); if (!ids.length) continue;
+      ids.forEach((id, j) => {
+        const el = els.get(id), disc = el.querySelector('.disc'), sh = el.querySelector('.sh');
+        if (!disc.animate) return;
+        const delay = (col * 42 + j * 34) * speed, d = 250 * speed;
+        last = Math.max(last, delay + d);
+        disc.animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.07)', offset: .65 }, { opacity: 1, transform: 'scale(1)' }], { duration: d, delay, easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'backwards' });
+        sh.animate([{ opacity: 0 }, { opacity: 1 }], { duration: d, delay, fill: 'backwards' });
+      });
+      col++;
+    }
+    if (last) cb.sound && cb.sound('deal');
+    return last;
   }
 
   // Move top checker of player p from index `from` to `to` (-1 off). hit handled if flagged.
@@ -470,17 +557,23 @@ function createBoard(svg, cb) {
     const tst = stacks.get(tk);
     const target = g.stackPos(tl, tst.length - 1, tst.length);
     const dur = opts.dur != null ? opts.dur : 270;
+    if (id === heldId) { opts = { ...opts, held: true }; heldId = null; }
     if (tl.t !== 'off') setTrayLook(id, false);
-    cb.sound && cb.sound('move');
+    cb.sound && cb.sound('lift', p);
     // borne-off checkers shrink as they slide into the tray, then settle as a slab
-    const main = animateTo(id, target, dur, true, tl.t === 'off' ? 0.55 : null).then(() => {
-      if (tl.t === 'off') { setTrayLook(id, true); setXY(id, target.x, target.y); }
-      cb.sound && cb.sound(tl.t === 'off' ? 'off' : 'place');
+    const main = animateTo(id, target, dur, opts.held ? 'held' : true, tl.t === 'off' ? 0.55 : null).then(() => {
+      if (my !== gen) return;
+      if (tl.t === 'off') {
+        setTrayLook(id, true); setXY(id, target.x, target.y);
+        const slab = els.get(id).querySelector('.slab');
+        if (!reduceMotion && slab.animate) slab.animate([{ transform: 'scale(1.35,1.8)', opacity: .4 }, { transform: 'scale(1)', opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.8,.3,1)' });
+      }
+      cb.sound && cb.sound(tl.t === 'off' ? 'off' : 'place', p);
     });
     proms.push(main);
     if (hitId != null) {
       const bl = { t: 'bar', p: 1 - p };
-      proms.push(new Promise(r => setTimeout(r, dur * speed * 0.55)).then(() => { if (my !== gen) return; cb.sound && cb.sound('hit'); return animateTo(hitId, g.stackPos(bl, stacks.get(locKey(bl)).length - 1, stacks.get(locKey(bl)).length), 300, true); }));
+      proms.push(new Promise(r => setTimeout(r, dur * speed * 0.62)).then(() => { if (my !== gen) return; cb.sound && cb.sound('hit'); fxRing(target.x, target.y, { k: 2.1, ms: 460, col: '#ff8a5c' }); return animateTo(hitId, g.stackPos(bl, stacks.get(locKey(bl)).length - 1, stacks.get(locKey(bl)).length), 300, true); }));
     }
     await Promise.all(proms);
     if (my !== gen) return id;   // rebuilt mid-move: the new board already shows the result
@@ -522,20 +615,24 @@ function createBoard(svg, cb) {
 
   /* ---- dice ---- */
   let diceState = null; // {p, vals, used:[bool], order:[i,j]}
-  function drawDice(st, dieRot) {
+  // pose (while the dice are in the air): per die {dx, dy, rot, sc, v}, keyed by position (or by player for the opening roll)
+  function drawDice(st, pose) {
     diceState = st;
-    if (cb.barDice) cb.barDice(st);
+    if (!pose && cb.barDice) cb.barDice(st);
     if (!st) { layers.dice.innerHTML = ''; return; }
     // phones held upright show your dice in the big control bar under the board, so not twice
     if (!st.single && st.p === 0 && cb.isPortrait && cb.isPortrait()) { layers.dice.innerHTML = ''; return; }
     const c = g.diceCenter(st.p), col = diceColors(st.p, humanLight);
+    const P = (k) => (pose && pose[k]) || {};
+    const DS = G.COMPACT ? 76 : 52, gap = DS * 0.635;   // upright phones draw the board small, so the dice are larger on it
+    const at = (q, k) => ({ x: q.x + (P(k).dx || 0), y: q.y + (P(k).dy || 0) });
     let s = '';
     const vals = st.vals;
     if (st.single) {
       // opening roll: one die each side
       for (const [pp, v] of st.single) {
-        const cc = g.diceCenter(pp);
-        s += dieSVG(cc.x, cc.y, v, diceColors(pp, humanLight), { rot: dieRot ? dieRot[pp] : 0 });
+        const q = at(g.diceCenter(pp), pp);
+        s += dieSVG(q.x, q.y, P(pp).v || v, diceColors(pp, humanLight), { rot: P(pp).rot, sc: P(pp).sc, size: DS });
       }
       layers.dice.innerHTML = s; return;
     }
@@ -543,40 +640,49 @@ function createBoard(svg, cb) {
       // doubles: show two dice, with small used markers
       const usedN = st.used.filter(Boolean).length;
       s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice">`;
-      const a = offs(c, -33), b2 = offs(c, 33);
-      s += dieSVG(a.x, a.y, vals[0], col, { used: usedN >= 4, rot: dieRot ? dieRot[0] : 0 });
-      s += dieSVG(b2.x, b2.y, vals[0], col, { rot: dieRot ? dieRot[1] : 0 });
+      const a = at(offs(c, -gap), 0), b2 = at(offs(c, gap), 1);
+      s += dieSVG(a.x, a.y, P(0).v || vals[0], col, { used: usedN >= 4, rot: P(0).rot, sc: P(0).sc, size: DS });
+      s += dieSVG(b2.x, b2.y, P(1).v || vals[0], col, { rot: P(1).rot, sc: P(1).sc, size: DS });
       // markers under the dice showing how many moves are left
-      for (let k = 0; k < 4; k++) { const q = offs(c, -27 + k * 18, 44); s += `<circle cx="${q.x}" cy="${q.y}" r="4.5" fill="${k < 4 - usedN ? '#f2b84b' : 'rgba(255,255,255,.18)'}"/>`; }
+      const mk = DS / 52;
+      if (!pose) for (let k = 0; k < 4; k++) { const q = offs(c, (-27 + k * 18) * mk, 44 * mk); s += `<circle cx="${q.x}" cy="${q.y}" r="${4.5 * mk}" fill="${k < 4 - usedN ? '#f2b84b' : 'rgba(255,255,255,.18)'}"/>`; }
       s += `</g>`;
     } else {
       const ord = st.order || [0, 1];
       s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice, tap to swap order">`;
-      ord.forEach((vi, pos) => { const q = offs(c, pos === 0 ? -33 : 33); s += dieSVG(q.x, q.y, vals[vi], col, { used: st.used[vi], rot: dieRot ? dieRot[pos] : 0 }); });
+      ord.forEach((vi, pos) => { const q = at(offs(c, pos === 0 ? -gap : gap), pos); s += dieSVG(q.x, q.y, P(pos).v || vals[vi], col, { used: st.used[vi], rot: P(pos).rot, sc: P(pos).sc, size: DS }); });
       s += `</g>`;
     }
     layers.dice.innerHTML = s;
   }
+  // Throw the dice: they tumble in from the edge of their half, bounce once and settle on the roll.
   async function rollDice(st, dur) {
-    dur = reduceMotion ? 0 : dur;
+    dur = reduceMotion ? 0 : dur * (0.5 + 0.5 * speed);
     cb.sound && cb.sound('dice');
     if (dur > 0) {
       const t0 = performance.now(), my = gen;
+      const keys = st.single ? st.single.map(([pp]) => pp) : [0, 1];
+      const inBoard = !!st.single || st.p !== 0 || !(cb.isPortrait && cb.isPortrait());
+      const rnd = () => 1 + Math.floor(Math.random() * 6);
+      const th = keys.map((key, i) => {
+        const c = g.diceCenter(st.single ? key : st.p);
+        const side = c.x > G.W / 2 ? 1 : -1;   // from the nearer outside edge
+        return { dx: side * (150 + Math.random() * 70), dy: (Math.random() - .5) * 90, rot: (Math.random() < .5 ? -1 : 1) * (360 + Math.random() * 300), lag: i * 0.08, v: rnd(), at: 0 };
+      });
       await new Promise(res => {
-        let last = 0;
         function step(now) {
           const t = (now - t0) / dur;
           if (t >= 1 || my !== gen) return res();
-          if (now - last > 55) {
-            last = now;
-            const fake = st.single
-              ? { single: st.single.map(([pp]) => [pp, 1 + Math.floor(Math.random() * 6)]) }
-              : { ...st, vals: st.vals.map(() => 1 + Math.floor(Math.random() * 6)) };
-            const rr = (1 - t) * 40;
-            const dr = st.single ? { 0: (Math.random() - .5) * rr, 1: (Math.random() - .5) * rr } : [(Math.random() - .5) * rr, (Math.random() - .5) * rr];
-            if (fake.vals && fake.vals.length === 4) fake.vals = [fake.vals[0], fake.vals[0], fake.vals[0], fake.vals[0]];
-            drawDice(fake, dr);
-          }
+          const pose = {}; let changed = false;
+          th.forEach((d, i) => {
+            const tt = Math.max(0, Math.min(1, (t - d.lag) / (1 - d.lag))), e = 1 - Math.pow(1 - tt, 3);
+            if (tt < 0.72) { if (now - d.at > 58) { d.at = now; let v; do { v = rnd(); } while (v === d.v); d.v = v; changed = true; } }
+            else if (d.v) { d.v = 0; changed = true; }   // 0: show the real value
+            const hop = Math.abs(Math.sin(Math.min(1, tt * 1.18) * Math.PI * 1.5)) * (1 - tt);
+            pose[keys[i]] = { dx: d.dx * (1 - e), dy: d.dy * (1 - e), rot: d.rot * (1 - e), sc: 1 + 0.3 * hop + 0.25 * (1 - e), v: d.v };
+          });
+          if (inBoard) drawDice(st, pose);
+          else if (changed && cb.barDice) cb.barDice({ ...st, rolling: true, faces: th.map(d => d.v) });
           requestAnimationFrame(step);
         }
         requestAnimationFrame(step);
@@ -588,12 +694,12 @@ function createBoard(svg, cb) {
   /* ---- cube ---- */
   let cubeState = null;
   function drawCube(st, animate) {
-    const prevPos = cubeState && cubeState.pos;
+    const prevPos = cubeState && cubeState.pos, prevVal = cubeState && cubeState.shown;
     cubeState = st;
     if (!st || !st.on) { layers.cube.innerHTML = ''; return; }
     const pos = g.cubePos(st.owner, st.offeredTo);
     const val = st.offeredTo != null ? st.value * 2 : (st.owner === -1 ? (st.value > 1 ? st.value : 64) : st.value);
-    const size = st.offeredTo != null ? 64 : G.COMPACT ? 40 : 46;
+    const size = st.offeredTo != null ? (G.COMPACT ? 96 : 64) : G.COMPACT ? 40 : 46;
     let html = cubeSVG(0, 0, val, size);
     let extra = '';
     if (st.canDouble && G.COMPACT) {
@@ -614,13 +720,18 @@ function createBoard(svg, cb) {
       w.setAttribute('transform', `translate(${from.x},${from.y})${trG()}`);
       (function step(now) { if (my !== gen) return; const t = Math.min(1, (now - t0) / dur), e = ease(t); w.setAttribute('transform', `translate(${from.x + (pos.x - from.x) * e},${from.y + (pos.y - from.y) * e})${trG()}`); if (t < 1) requestAnimationFrame(step); })(t0);
     }
-    cubeState.pos = pos;
+    cubeState.pos = pos; cubeState.shown = val;
+    const face = layers.cube.querySelector('.cube');
+    if (animate && !reduceMotion && face && face.animate && prevVal != null && prevVal !== val)
+      face.animate([{ transform: 'scale(1) rotate(0deg)' }, { transform: 'scale(1.28) rotate(-8deg)', offset: .4 }, { transform: 'scale(1) rotate(0deg)' }], { duration: 420 * Math.max(.7, speed), easing: 'cubic-bezier(.3,.7,.3,1)' });
   }
 
   /* ---- buttons ---- */
   // btns: [{id, label, kind:'primary'|'accent'|'ghost', side:0|1, slot:'left'|'right'|'center'|'l2'|'r2', w}]
   function drawButtons(btns) {
+    const had = new Set(lastBtns.map(b => b.id));
     lastBtns = btns || [];
+    refreshPickable();
     let s = '';
     // portrait: large HTML buttons below the board instead of tiny in-board ones
     if (cb.htmlButtons) {
@@ -641,11 +752,12 @@ function createBoard(svg, cb) {
       const fill = b.kind === 'accent' ? '#f2b84b' : b.kind === 'primary' ? '#f2efe9' : 'rgba(255,255,255,.10)';
       const tc = b.kind === 'ghost' ? '#e6ece9' : '#16201d';
       const stroke = b.kind === 'ghost' ? 'rgba(255,255,255,.22)' : 'none';
-      s += `<g class="btn" data-btn="${b.id}" role="button" tabindex="0" aria-label="${esc(b.aria || b.label)}" transform="translate(${x},${y})${trG()}">
+      s += `<g class="btn" data-btn="${b.id}" role="button" tabindex="0" aria-label="${esc(b.aria || b.label)}" transform="translate(${x},${y})${trG()}"><g class="bi${had.has(b.id) ? '' : ' in'}">
         <rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${b.kind !== 'ghost' ? 'filter="url(#fShadow)"' : ''}/>
+        ${b.kind !== 'ghost' ? `<rect x="${-w / 2 + 2}" y="${-h / 2 + 2}" width="${w - 4}" height="${h - 4}" rx="${h / 2 - 2}" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="1"/>` : ''}
         ${b.icon ? `<g transform="translate(${-w / 2 + 22},0)" stroke="${tc}" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${b.icon}</g>` : ''}
         <text x="${b.icon ? 10 : 0}" y="${6 * k}" text-anchor="middle" font-size="${16 * k}" font-weight="700" fill="${tc}">${esc(b.label)}</text>
-      </g>`;
+      </g></g>`;
     }
     layers.btn.innerHTML = s;
   }
@@ -658,9 +770,10 @@ function createBoard(svg, cb) {
     if (!el) { el = document.createElementNS(SVGNS, 'g'); el.id = 'lyStatus'; layers.btn.before(el); }
     if (!text) { el.innerHTML = ''; return; }
     const c = g.halfCenter(side);
-    el.innerHTML = `<g transform="translate(${c.x},${c.y})${trG()}"><rect x="-80" y="-18" width="160" height="36" rx="18" fill="rgba(0,0,0,.28)"/>
-      <circle cx="-52" cy="0" r="4" fill="#f2b84b"><animate attributeName="opacity" values="1;.25;1" dur="1s" repeatCount="indefinite"/></circle>
-      <text x="8" y="5" text-anchor="middle" font-size="14" font-weight="600" fill="#e6ece9">${esc(text)}</text></g>`;
+    const tw = Math.max(96, String(text).length * 8.4 + 62), dots = [0, 1, 2].map(i => `<circle class="sdot" style="animation-delay:${i * .14}s" cx="${-tw / 2 + 20 + i * 9}" cy="0" r="3.2" fill="#f2b84b"/>`).join('');
+    const sk = Math.min(2, Math.max(1, G.TXT / 12)).toFixed(2);   // readable however small the board is drawn
+    el.innerHTML = `<g transform="translate(${c.x},${c.y})${trG()} scale(${sk})"><g class="spill"><rect x="${-tw / 2}" y="-19" width="${tw}" height="38" rx="19" fill="rgba(8,16,18,.55)" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+      ${dots}<text x="${-tw / 2 + 48}" y="5" font-size="14" font-weight="600" fill="#e6ece9">${esc(text)}</text></g></g>`;
   }
 
   /* ---- highlights ---- */
@@ -671,7 +784,7 @@ function createBoard(svg, cb) {
       const loc = locOf(0, d);
       if (loc.t === 'off') {
         const x = g.mx(G.TRAYX), y = G.MIDY + 8 + (G.FH / 2 - 8) / 2;
-        s += `<rect x="${x - G.TIN / 2}" y="${G.MIDY + 6}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
+        s += `<rect class="dst" data-d="${d}" x="${x - G.TIN / 2}" y="${G.MIDY + 6}" width="${G.TIN}" height="${G.FH / 2 - 6}" rx="5" fill="rgba(242,184,75,.22)" stroke="#f2b84b" stroke-width="2"/>`;
         continue;
       }
       const k = locKey(loc), n = (stacks.get(k) || []).length;
@@ -679,12 +792,23 @@ function createBoard(svg, cb) {
       const pt = g.stackPos(loc, isHit ? 0 : n, isHit ? 1 : n + 1);
       const top = g.isTop(loc.i);
       const x = g.ptX(loc.i), y0 = top ? G.FV : G.H - G.FV, y1 = top ? G.FV + G.PL - 8 : G.H - G.FV - G.PL + 8;
-      s += `<path d="M${x - G.PW / 2 + 3},${y0} L${x},${y1} L${x + G.PW / 2 - 3},${y0} Z" fill="rgba(242,184,75,.20)"/>`;
-      s += `<circle cx="${pt.x}" cy="${pt.y}" r="${G.CD / 2 - 6}" fill="rgba(242,184,75,.18)" stroke="#f2b84b" stroke-width="2.5" stroke-dasharray="${isHit ? '0' : '5 5'}"/>`;
+      s += `<g class="dst" data-d="${d}"><path class="glow" d="M${x - G.PW / 2 + 3},${y0} L${x},${y1} L${x + G.PW / 2 - 3},${y0} Z" fill="rgba(242,184,75,.20)"/>`;
+      s += `<circle class="spot" cx="${pt.x}" cy="${pt.y}" r="${G.CD / 2 - 6}" fill="rgba(242,184,75,.18)" stroke="${isHit ? '#ff8a5c' : '#f2b84b'}" stroke-width="2.5" stroke-dasharray="${isHit ? '0' : '5 5'}"/></g>`;
     }
     layers.hint.innerHTML = s;
   }
   function clearDests() { dests = null; layers.hint.innerHTML = ''; }
+  // which of your checkers can be picked up right now (for the pointer and hover feedback)
+  function refreshPickable() {
+    if (!layers.chk) return;
+    layers.chk.querySelectorAll('.chk.can').forEach(e => e.classList.remove('can'));
+    if (!interactive || !cb.canPick) return;
+    for (const [k, ids] of stacks) {
+      if (!ids.length || ids[ids.length - 1] >= 15) continue;
+      const idx = k === 'bar0' ? 24 : k.startsWith('pt') ? +k.slice(2) : null;
+      if (idx != null && cb.canPick(idx)) { const el = els.get(ids[ids.length - 1]); el && el.classList.add('can'); }
+    }
+  }
 
   function mark(id, on) {
     const el = els.get(id); if (!el) return;
@@ -749,7 +873,7 @@ function createBoard(svg, cb) {
     if (dests && selFrom != null && dests.has(from) && from !== selFrom) {
       const f = selFrom; selFrom = null; clearDests(); cb.drop(f, from); return;
     }
-    if (!cb.canPick(from)) { cb.cantPick && cb.cantPick(from); return; }
+    if (!cb.canPick(from)) { nudge(ce); cb.cantPick && cb.cantPick(from); return; }
     // always drag the top checker of that stack
     const k = locKey(where.get(id)); const st = stacks.get(k); id = st[st.length - 1];
     const start = svgPoint(ev);
@@ -768,9 +892,13 @@ function createBoard(svg, cb) {
       const el = els.get(drag.id);
       layers.drag.appendChild(el);
       el.classList.add('dragging');
-      el.querySelector('.disc').setAttribute('filter', 'url(#fLift)');
+      setLift(el, 1);
+      cb.sound && cb.sound('pick');
     }
-    setXY(drag.id, pt.x, pt.y - 6, 1.08);
+    setXY(drag.id, pt.x, pt.y - 6, 1.1);
+    // the destination under the finger answers
+    const hot = destAt(pt);
+    if (hot !== drag.hot) { drag.hot = hot; layers.hint.querySelectorAll('[data-d]').forEach(n => n.classList.toggle('hot', hot != null && +n.dataset.d === hot)); }
   });
   function endDrag(ev, cancel) {
     if (!drag || (ev && ev.pointerId !== drag.pointerId)) return;
@@ -781,21 +909,21 @@ function createBoard(svg, cb) {
       return;
     }
     el.classList.remove('dragging');
-    el.querySelector('.disc').setAttribute('filter', 'url(#fShadow)');
     const pt = ev ? svgPoint(ev) : d.start;
     const dest = cancel ? null : destAt(pt);
     clearDests();
     if (dest != null) {
       // put checker back into its stack position logically, then let the controller move it (animates from current spot)
-      cb.drop(d.from, dest, true);
+      heldId = d.id;
+      Promise.resolve(cb.drop(d.from, dest, true)).finally(() => { if (heldId === d.id) { heldId = null; setLift(el, 0); } });
     } else {
-      animateTo(d.id, d.orig, 160).then(orderZ);
+      animateTo(d.id, d.orig, 190, 'held').then(orderZ);
     }
   }
   svg.addEventListener('pointerup', (ev) => endDrag(ev, false));
   svg.addEventListener('pointercancel', (ev) => endDrag(ev, true));
 
-  let selFrom = null;
+  let selFrom = null, heldId = null;   // heldId: the checker just dropped from a drag (it comes down from the hand, no second lift)
   function select(from) {
     selFrom = from;
     showDests(from, cb.dests(from));
@@ -832,7 +960,8 @@ function createBoard(svg, cb) {
     get aspect() { return G.W / G.H; },
     toScreen(x, y) { const m = root.getScreenCTM(); return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }; },
     setPositions, moveChecker, unmoveChecker, drawDice, rollDice, drawCube, drawButtons, drawStatus, showDests, clearDests, select,
-    setInteractive(v) { interactive = v; if (!v) { selFrom = null; clearDests(); } },
+    setInteractive(v) { interactive = v; if (!v) { selFrom = null; clearDests(); } refreshPickable(); },
+    dealIn, fxRing, refreshPickable,
     setSpeed(s) { speed = s; },
     setMarked, drawArrows, arrowsFor, updateCounts,
     idsMovedLast: () => [],

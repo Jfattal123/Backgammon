@@ -53,6 +53,56 @@ function boardLayout() {
 }
 const dotStyle = (p) => `background:${(p === 0) === Settings.humanLight ? '#f2efe9' : '#1a1d21'}`;
 
+// A burst of confetti for a win: two cannons from the bottom corners (and a shower from the top for a match).
+const Confetti = (() => {
+  let raf = 0;
+  function burst(big) {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let cv = document.getElementById('confetti');
+    if (!cv) { cv = document.createElement('canvas'); cv.id = 'confetti'; cv.setAttribute('aria-hidden', 'true'); document.body.appendChild(cv); }
+    const dpr = Math.min(2, window.devicePixelRatio || 1), W = window.innerWidth, H = window.innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const cx = cv.getContext('2d'); if (!cx) { cv.remove(); return; }
+    const cols = ['#f0b548', '#f7d98a', '#4c7d85', '#e2d2b7', '#ffffff', '#e07a2e', '#2f9e6a'];
+    const rnd = (a, b) => a + Math.random() * (b - a), P = [];
+    const power = Math.min(1.25, Math.max(.7, H / 800));
+    const add = (x, y, ang, sp, delay) => P.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, w: rnd(6, 11), h: rnd(9, 16), r: rnd(0, 6.28), vr: rnd(-9, 9), f: rnd(0, 6.28), vf: rnd(6, 13), c: cols[Math.floor(Math.random() * cols.length)], d: delay, round: Math.random() < .22 });
+    const n = big ? 80 : 46;
+    for (let i = 0; i < n; i++) {
+      add(-10, H * .96, rnd(-1.32, -0.78), rnd(820, 1500) * power, rnd(0, .12));
+      add(W + 10, H * .96, Math.PI - rnd(-1.32, -0.78), rnd(820, 1500) * power, rnd(0, .12));
+    }
+    if (big) for (let i = 0; i < 90; i++) add(rnd(0, W), rnd(-H * .5, -20), rnd(1.3, 1.85), rnd(60, 260), rnd(.25, 1.1));
+    cancelAnimationFrame(raf);
+    let last = performance.now(); const t0 = last, maxT = big ? 4.6 : 3.4;
+    (function frame(now) {
+      const dt = Math.min(.033, (now - last) / 1000); last = now;
+      const T = (now - t0) / 1000;
+      cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H);
+      let alive = 0;
+      for (const q of P) {
+        if (T < q.d) { alive++; continue; }
+        q.vy += 1500 * dt; q.vx *= 1 - 1.5 * dt; q.vy *= 1 - 1.1 * dt;
+        q.x += q.vx * dt; q.y += q.vy * dt; q.r += q.vr * dt; q.f += q.vf * dt;
+        if (q.y > H + 30) continue;
+        alive++;
+        cx.save(); cx.translate(q.x, q.y); cx.rotate(q.r); cx.scale(1, Math.cos(q.f));
+        cx.globalAlpha = Math.max(0, Math.min(1, (maxT - T) / .7)); cx.fillStyle = q.c;
+        if (q.round) { cx.beginPath(); cx.arc(0, 0, q.w * .55, 0, 6.2832); cx.fill(); } else cx.fillRect(-q.w / 2, -q.h / 2, q.w, q.h);
+        cx.restore();
+      }
+      if (alive && T < maxT) raf = requestAnimationFrame(frame); else cv.remove();
+    })(last);
+  }
+  return { burst };
+})();
+// count a number up to its value (the stats on the game-over card)
+function countUp(el, to, fmt, ms = 650) {
+  if (!el || to == null || !isFinite(to) || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+  const t0 = performance.now();
+  (function step(now) { const t = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - t, 3); el.textContent = fmt(to * e); if (t < 1 && el.isConnected) requestAnimationFrame(step); })(t0);
+}
+
 const UI = (() => {
   let board;
   let toastT;
@@ -66,13 +116,22 @@ const UI = (() => {
   function update() {
     const M = Game.M;
     const sc = $('#score'), mi = $('#matchinfo');
-    if (!M) { sc.innerHTML = ''; mi.textContent = ''; return; }
+    if (!M) { sc.innerHTML = ''; sc.dataset.k = ''; mi.textContent = ''; return; }
     const g = M.games[M.games.length - 1];
     const turn = M.cur ? M.cur.turn : -1;
     const len = M.matchTo ? `${M.matchTo}-pt` : 'Single';
-    sc.innerHTML = `<div class="side${turn === 0 ? ' turn' : ''}"><span class="dot" style="${dotStyle(0)}"></span><span class="nm">You</span><span class="pts">${M.score[0]}</span></div>
-      <span class="len">${len}</span>
-      <div class="side${turn === 1 ? ' turn' : ''}"><span class="pts">${M.score[1]}</span><span class="nm">${esc(Game.oppName)}</span><span class="dot" style="${dotStyle(1)}"></span></div>`;
+    const key = [M.id, len, Game.oppName, Settings.humanLight].join('|');
+    if (sc.dataset.k !== key) {
+      sc.dataset.k = key;
+      sc.innerHTML = `<div class="side" data-s="0"><span class="dot" style="${dotStyle(0)}"></span><span class="nm">You</span><span class="pts"></span></div>
+        <span class="len">${len}</span>
+        <div class="side" data-s="1"><span class="pts"></span><span class="nm">${esc(Game.oppName)}</span><span class="dot" style="${dotStyle(1)}"></span></div>`;
+    }
+    for (const p of [0, 1]) {
+      const side = sc.querySelector(`[data-s="${p}"]`), el = side.querySelector('.pts'), v = String(M.score[p]);
+      side.classList.toggle('turn', turn === p);
+      if (el.textContent !== v) { const first = el.textContent === ''; el.textContent = v; if (!first) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } }
+    }
     const bits = [];
     bits.push(M.matchTo ? `${M.matchTo}-point match` : 'Single game');
     bits.push(`Game ${g ? g.no : 1}`);
@@ -85,9 +144,10 @@ const UI = (() => {
 
   /* ---------- overlay helpers ---------- */
   function openCard(html, opts = {}) {
-    closeCard();
+    const swap = !!$('#scrim');
+    closeCard(true);
     const s = document.createElement('div');
-    s.className = 'scrim'; s.id = 'scrim';
+    s.className = 'scrim' + (swap ? ' swap' : ''); s.id = 'scrim';
     s.innerHTML = `<div class="card" role="dialog" aria-modal="true">${html}</div>`;
     if (opts.dismiss !== false) s.addEventListener('pointerdown', (e) => { if (e.target === s) closeCard(); });
     document.body.appendChild(s);
@@ -95,7 +155,14 @@ const UI = (() => {
     f && f.focus({ preventScroll: true });
     return s;
   }
-  function closeCard() { const s = $('#scrim'); if (s) s.remove(); }
+  // Closing leaves a fading copy behind for a moment; it is no longer "the card" (no ids, not interactive).
+  function closeCard(now) {
+    const s = $('#scrim'); if (!s) return;
+    if (now === true) { s.remove(); return; }
+    s.removeAttribute('id'); s.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+    s.classList.remove('swap'); s.classList.add('out'); s.inert = true;
+    setTimeout(() => s.remove(), 190);
+  }
 
   function seg(id, options, val) {
     return `<div class="seg" id="${id}" role="group">${options.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${String(v) === String(val)}">${l}</button>`).join('')}</div>`;
@@ -302,11 +369,13 @@ const UI = (() => {
     const r = menuAnchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
     let top, left;
     const column = getComputedStyle(document.querySelector('.topbar')).flexDirection === 'column';
-    if (column && r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; }   // beside the side column
+    let origin = '100% 0';   // where it grows from: the corner nearest the button
+    if (column && r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; origin = '100% 100%'; }   // beside the side column
     else if (r.bottom + gap + h <= vh - pad) { top = r.bottom + gap; left = r.right - w; }
-    else if (r.top - gap - h >= pad) { top = r.top - gap - h; left = r.right - w; }
-    else if (r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; }
-    else { left = r.right + gap; top = r.bottom - h; }
+    else if (r.top - gap - h >= pad) { top = r.top - gap - h; left = r.right - w; origin = '100% 100%'; }
+    else if (r.left - gap - w >= pad) { left = r.left - gap - w; top = r.bottom - h; origin = '100% 100%'; }
+    else { left = r.right + gap; top = r.bottom - h; origin = '0 100%'; }
+    m.style.setProperty('--mo', origin);
     m.style.left = Math.max(pad, Math.min(vw - w - pad, left)) + 'px';
     m.style.top = Math.max(pad, Math.min(vh - h - pad, top)) + 'px';
   }
@@ -359,11 +428,12 @@ const UI = (() => {
       <div class="field"><span class="lab">Animation speed</span>${seg('stSpeed', [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']], S.speed)}</div>
       <div class="field"><span class="lab">Your checkers</span>${seg('stCol', [['1', 'Light'], ['0', 'Dark']], S.humanLight ? '1' : '0')}</div>
       <div class="field">
-        ${toggle('stDice', 'Dice roll animation', 'A third of a second', S.diceAnim)}
+        ${toggle('stDice', 'Dice roll animation', 'The dice tumble onto the board', S.diceAnim)}
         ${toggle('stForced', 'Auto-play forced moves', 'When only one move is possible', S.autoForced)}
         ${toggle('stRoll', 'Roll automatically', 'When you have no cube decision', S.autoRoll)}
         ${toggle('stPips', 'Pip counts', '', S.pips)}
         ${toggle('stSound', 'Sound', '', S.sound)}
+        ${navigator.vibrate ? toggle('stHap', 'Vibration', 'A light tap when you move, on phones that support it', S.haptics !== false) : ''}
       </div>
       <div class="row" style="justify-content:flex-end"><button class="btnx primary" id="stDone" autofocus>Done</button></div>`);
     const card = s.querySelector('.card');
@@ -376,7 +446,8 @@ const UI = (() => {
     $('#stForced').onchange = e => { S.autoForced = e.target.checked; apply(); };
     $('#stRoll').onchange = e => { S.autoRoll = e.target.checked; apply(); };
     $('#stPips').onchange = e => { S.pips = e.target.checked; apply(); };
-    $('#stSound').onchange = e => { S.sound = e.target.checked; apply(); };
+    $('#stSound').onchange = e => { S.sound = e.target.checked; apply(); if (S.sound) { Sound.unlock(); Sound.play('place'); } };
+    if ($('#stHap')) $('#stHap').onchange = e => { S.haptics = e.target.checked; apply(); if (S.haptics) Sound.play('place', 0); };
     $('#stDone').onclick = closeCard;
   }
 
@@ -474,8 +545,23 @@ const UI = (() => {
     else if (kind === 'pass') title = won ? `${opp} passes your double` : `You pass. ${opp} wins`;
     else if (kind === 'resign') title = won ? `${opp} resigns` : 'You resign';
     else title = `${who} win${won ? '' : 's'} ${how === 'single' ? 'the game' : 'a ' + how}`;
-    const subtitle = `${who} +${pts} point${pts > 1 ? 's' : ''}${kind === 'resign' ? ' · ' + how : ''}${M.matchTo ? ` · Score ${M.score[0]}–${M.score[1]} (${M.matchTo}-point match)` : ''}`;
-    const s = openCard(`<h2>${esc(title)}</h2><p class="sub">${esc(subtitle)}</p>
+    const subtitle = `${who} +${pts} point${pts > 1 ? 's' : ''}${kind === 'resign' ? ' · ' + how : ''}${M.matchTo ? ` · ${M.matchTo}-point match` : ''}`;
+    // the race to the match length: points already won, and the ones this game added
+    let track = '';
+    if (M.matchTo) {
+      const start = g.startScore || [0, 0], n = M.matchTo;
+      const row = (p) => {
+        const now = Math.min(n, M.score[p]), was = Math.min(n, start[p]);
+        const cells = n <= 15
+          ? `<span class="pipsrow">${Array.from({ length: n }, (_, i) => `<i class="pp${i < was ? ' on' : i < now ? ' new' : ''}"${i >= was && i < now ? ` style="--i:${i - was}"` : ''}></i>`).join('')}</span>`
+          : `<span class="barwrap"><i style="width:${(100 * now / n).toFixed(1)}%"></i></span>`;
+        return `<div class="trow"><span class="nm"><span class="pd" style="${dotStyle(p)}"></span>${p === 0 ? 'You' : esc(opp)}</span>${cells}<span class="tot">${M.score[p]}</span></div>`;
+      };
+      track = `<div class="track" aria-label="Score ${M.score[0]} to ${M.score[1]}, first to ${n}">${row(0)}${row(1)}</div>`;
+    }
+    if (won) Confetti.burst(matchOver && !!M.matchTo);
+    const s = openCard(`<div class="gohead">${won ? `<div class="gobadge win" aria-hidden="true">+${pts}</div>` : ''}<div style="flex:1;min-width:0"><h2>${esc(title)}</h2><p class="sub">${esc(subtitle)}</p></div></div>
+      ${track}
       <div id="goStats"><span class="loading"><span class="spin"></span>Finishing the analysis…</span></div>
       ${matchOver ? '<div id="goRm" class="rmnote" hidden></div>' : ''}
       <div class="row" style="justify-content:flex-end">
@@ -495,11 +581,12 @@ const UI = (() => {
     const a = Game.stats(scope, 0), b = Game.stats(scope, 1);
     const pr = (x) => x == null ? '–' : x.toFixed(1);
     el.innerHTML = `<div class="stats">
-      ${[['You', a, 0], [Game.oppName, b, 1]].map(([n, st, p]) => `<div class="stat"><div class="who"><span class="dot" style="${dotStyle(p)}"></span>${n}</div>
-        <div class="pr"><span class="big">${pr(st.prAll)}</span><span class="lbl">PR</span></div>
+      ${[['You', a, 0], [Game.oppName, b, 1]].map(([n, st, p]) => `<div class="stat"><div class="who"><span class="dot" style="${dotStyle(p)}"></span>${esc(n)}</div>
+        <div class="pr"><span class="big" data-pr="${st.prAll == null ? '' : st.prAll}">${pr(st.prAll)}</span><span class="lbl">PR</span></div>
         <div class="rating">${prLabel(st.prAll) || 'No decisions'}</div>
         <div class="kv"><span>Checker</span><span>${pr(st.prChecker)}</span><span>Cube</span><span>${pr(st.prCube)}</span><span>Luck</span><span>${st.luckPts >= 0 ? '+' : '−'}${Math.abs(st.luckPts).toFixed(2)}</span></div></div>`).join('')}
     </div>`;
+    el.querySelectorAll('[data-pr]').forEach(e => { if (e.dataset.pr !== '') countUp(e, +e.dataset.pr, v => v.toFixed(1)); });
   }
 
   // the friend left on purpose (started something else)
@@ -579,7 +666,7 @@ const UI = (() => {
       isPortrait: () => document.getElementById('app').classList.contains('portrait'),
       htmlButtons: (btns) => { bar.btns = btns || []; renderBar(); },
       barDice: (st) => { bar.dice = st; renderBar(); },
-      sound: (k) => Sound.play(k)
+      sound: (k, p) => Sound.play(k, p)
     });
     Sound.on = Settings.sound;
     Game.attach(board, { update, toast, tutorMove, tutorCube, botResigns, gameOver, rematch: rematchUI, clearTransient: () => { hideBanner(); closeMenu(); }, friendLeft });
@@ -610,25 +697,38 @@ const UI = (() => {
   /* ---------- portrait control bar: big buttons and dice under the board ---------- */
   const bar = { btns: [], dice: null };
   function miniDie(v, used) {
-    const P = pipDots(v).map(([x, y]) => `<circle cx="${26 + x}" cy="${26 + y}" r="4.8" fill="currentColor"/>`).join('');
-    return `<svg viewBox="0 0 52 52" width="46" height="46" style="opacity:${used ? .3 : 1}"><rect x="1" y="1" width="50" height="50" rx="10" fill="var(--surface-2)" stroke="var(--line)" stroke-width="2"/>${P}</svg>`;
+    const light = Settings.humanLight;
+    const P = pipDots(v).map(([x, y]) => `<circle cx="${26 + x}" cy="${26 + y}" r="4.8" fill="${light ? '#1a1d21' : '#f2efe9'}"/>`).join('');
+    return `<svg viewBox="0 0 52 52" width="48" height="48" style="opacity:${used ? .3 : 1}"><rect x="1" y="1" width="50" height="50" rx="11" fill="${light ? 'url(#gDieL) #f7f4ee' : 'url(#gDieD) #24282d'}" stroke="${light ? '#c4bcae' : '#111316'}" stroke-width="1.4"/><rect x="3.4" y="3.4" width="45.2" height="45.2" rx="9" fill="none" stroke="${light ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.13)'}" stroke-width="1.2"/>${P}</svg>`;
   }
   function renderBar() {
     const el = $('#actbar');
     const portrait = document.getElementById('app').classList.contains('portrait');
     const btns = portrait ? bar.btns : [];
     const dice = portrait && bar.dice && !bar.dice.single && bar.dice.p === 0 ? bar.dice : null;
-    if (!btns.length && !dice) { el.hidden = true; el.innerHTML = ''; return; }
-    const btn = (b) => `<button type="button" class="btnx ${b.kind === 'primary' ? 'primary' : b.kind === 'accent' ? 'accent' : ''}" data-b="${b.id}" aria-label="${esc(b.aria || b.label)}">${esc(b.label)}</button>`;
-    const left = btns.filter(b => b.id === 'double' || b.id === 'undo' || b.id === 'pass');
-    const right = btns.filter(b => !left.includes(b));
+    if (!btns.length && !dice) { el.hidden = true; el.innerHTML = ''; bar.shown = new Set(); return; }
     let mid = '';
     if (dice) {
-      const ord = dice.vals.length === 4 ? [0, 1] : (dice.order || [0, 1]);
-      const used = dice.vals.length === 4 ? [dice.used.filter(Boolean).length >= 4, false] : ord.map(i => dice.used[i]);
-      mid = `<button type="button" class="dicebtn" data-b="dice" aria-label="Dice: tap to swap which is played first, or to confirm">${ord.map((i, k) => miniDie(dice.vals[i], used[k])).join('')}</button>`;
-    }
+      const dbl = dice.vals.length === 4;
+      const ord = dbl ? [0, 1] : (dice.order || [0, 1]);
+      const used = dice.rolling ? [false, false] : dbl ? [dice.used.filter(Boolean).length >= 4, false] : ord.map(i => dice.used[i]);
+      const face = (k) => (dice.rolling && dice.faces && dice.faces[k]) || dice.vals[dbl ? 0 : ord[k]];
+      // mid-throw: only the faces change, so the tumble isn't restarted
+      const live = dice.rolling && el.querySelector('.dicebtn.rolling');
+      if (live) { live.querySelectorAll('.d').forEach((d, k) => { d.innerHTML = miniDie(face(k), false); }); return; }
+      const now = performance.now();
+      if (!dice.rolling && bar.wasRolling) bar.landAt = now;
+      bar.wasRolling = !!dice.rolling;
+      const landing = !dice.rolling && bar.landAt && now - bar.landAt < 420;
+      const delay = (k) => landing ? ` style="animation-delay:${Math.round(k * 50 - (now - bar.landAt))}ms"` : '';
+      mid = `<button type="button" class="dicebtn${dice.rolling ? ' rolling' : landing ? ' landed' : ''}" data-b="dice" aria-label="Dice: tap to swap which is played first, or to confirm">${[0, 1].map(k => `<span class="d"${delay(k)}>${miniDie(face(k), used[k])}</span>`).join('')}</button>`;
+    } else bar.wasRolling = false;
+    const had = bar.shown || new Set();
+    const btn = (b) => `<button type="button" class="btnx ${b.kind === 'primary' ? 'primary' : b.kind === 'accent' ? 'accent' : ''}${had.has(b.id) ? '' : ' in'}" data-b="${b.id}" aria-label="${esc(b.aria || b.label)}">${esc(b.label)}</button>`;
+    const left = btns.filter(b => b.id === 'double' || b.id === 'undo' || b.id === 'pass');
+    const right = btns.filter(b => !left.includes(b));
     el.innerHTML = `<div class="side l">${left.map(btn).join('')}</div>${mid}<div class="side r">${right.map(btn).join('')}</div>`;
+    bar.shown = new Set(btns.map(b => b.id));
     el.hidden = false;
     el.onclick = (e) => { const x = e.target.closest('[data-b]'); if (x) Game.button(x.dataset.b); };
   }
