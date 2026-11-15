@@ -250,7 +250,14 @@ const Review = (() => {
   function wireExport() {
     const dl = $('#expDl'), cp = $('#expCopy'), sh = $('#expShare');
     const name = MatExport.fileName(M, expNames());
-    if (dl) dl.onclick = () => {
+    if (dl) dl.onclick = async () => {
+      // inside claude.ai the page cannot download directly: hand the file to the viewer's save prompt
+      const host = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
+      if (host) {
+        try { await host.save({ filename: name + '.txt', data: matText() }); UI.toast('Saved. Rename it to end in .mat if your program asks'); }
+        catch (e) { if (e && e.code !== 'declined') UI.toast('Saving is blocked here: use Copy text'); }
+        return;
+      }
       try {
         const url = URL.createObjectURL(new Blob([matText()], { type: 'text/plain' }));
         const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
