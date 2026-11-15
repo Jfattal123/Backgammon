@@ -301,7 +301,14 @@ const Game = (() => {
 
   function save() {
     if (!M) return;
-    try { M.savedAt = Date.now(); Store.set('current', M); } catch (e) { }
+    try {
+      M.savedAt = Date.now();
+      // while your friend's moves are being shown live, the saved board stays at the start of their turn
+      const c = M.cur, keep = c && liveBase ? c.b : null;
+      if (keep) c.b = liveBase;
+      Store.set('current', M);
+      if (keep) c.b = keep;
+    } catch (e) { }
   }
 
   /* ---------- analysis ---------- */
@@ -499,7 +506,7 @@ const Game = (() => {
     c.turn = 0; c.dice = dice;
     // the larger die always comes first; tapping the dice swaps them for this roll only
     order = dice[0] >= dice[1] ? [0, 1] : [1, 0];
-    partial = []; rem = R.diceList(dice[0], dice[1]);
+    partial = []; rem = R.diceList(dice[0], dice[1]); pendingTaps = [];
     const { me, opp } = sides(0);
     turnInfo = R.turnInfo(me, opp, dice[0], dice[1]);
     pendingRecord = { k: 'move', p: 0, dice: dice.slice(), b: clone(c.b), ctx: ctxFor(0), subs: [] };
@@ -599,14 +606,19 @@ const Game = (() => {
   }
   async function tap(from) {
     if (phase !== 'moving' || busy || !turnInfo) return;
+    const played = await tapPlay(from);
+    if (!played) flushTap();
+  }
+  async function tapPlay(from) {
     const { me, opp } = sides(0);
     // bearing off: prefer the smallest die that takes the checker off
     const offDice = [...new Set(rem)].sort((a, b) => a - b).filter(d => R.subDest(me, opp, from, d) === -1 && R.stepLegal(turnInfo, me, opp, rem, partial.length, from, d));
-    if (offDice.length > 1) { busy = true; await playStep(from, offDice[0]); busy = false; afterStep(); return; }
+    if (offDice.length > 1) { busy = true; await playStep(from, offDice[0]); busy = false; afterStep(); flushTap(); return true; }
     for (const d of preferredDice().concat(rem)) {
       if (!rem.includes(d)) continue;
-      if (R.stepLegal(turnInfo, me, opp, rem, partial.length, from, d)) { busy = true; await playStep(from, d); busy = false; afterStep(); return; }
+      if (R.stepLegal(turnInfo, me, opp, rem, partial.length, from, d)) { busy = true; await playStep(from, d); busy = false; afterStep(); flushTap(); return true; }
     }
+    return false;
   }
   async function drop(from, dest) {
     if (phase !== 'moving' || busy || !turnInfo) return;
@@ -616,6 +628,24 @@ const Game = (() => {
     for (const st of path) await playStep(st.from, st.d, false, path.length > 1 ? 170 : 200);
     busy = false;
     afterStep();
+    flushTap();
+  }
+  // friend games: the checker moves you've made so far this turn, so your friend sees them as you make them.
+  // k = how many actions you've sent, which is exactly how many they have applied while waiting for this move.
+  function shareLive() {
+    if (!friend() || !Net.state || phase !== 'moving') return;
+    Net.live({ k: Net.state.out.length, m: R.toGnubg(partial).slice(0, partial.length * 2) });
+  }
+  // a checker tapped while the previous one is still sliding: play it as soon as that finishes
+  let pendingTaps = [];
+  function queueTap(from) {
+    if (phase !== 'moving' || !busy || !turnInfo || pendingTaps.length >= 4) return false;
+    pendingTaps.push(from);
+    return true;
+  }
+  function flushTap() {
+    if (!pendingTaps.length || phase !== 'moving' || busy) return;
+    tap(pendingTaps.shift());   // tap() flushes the next one when its checker has landed
   }
   async function playStep(from, d, auto, dur) {
     const c = cur();
@@ -623,6 +653,7 @@ const Game = (() => {
     const s = R.applySub(c.b[0], c.b[1], from, d);
     partial.push({ ...s, snap });
     rem = R.removeOne(rem, d);
+    shareLive();
     board.setMarked([]);
     await board.moveChecker(0, from, s.to, s.hit, { dur });
     if (auto) drawMoveButtons();
@@ -639,9 +670,11 @@ const Game = (() => {
     const s = partial.pop();
     cur().b = s.snap;
     rem.push(s.die);
+    shareLive();
     await board.unmoveChecker(0, s.from, s.to, s.hit);
     busy = false;
     drawMoveButtons();
+    flushTap();
   }
   async function undoAll(fast) {
     busy = true;
@@ -696,6 +729,7 @@ const Game = (() => {
   async function commitHuman(forced) {
     const ep = epoch;
     phase = 'committing';
+    pendingTaps = [];
     board.setInteractive(false);
     board.drawButtons([]);
     const rec = pendingRecord;
@@ -1067,6 +1101,7 @@ const Game = (() => {
      Whatever we are waiting for, a resignation offer can arrive instead and is always answered. */
   function netHooks() {
     return {
+      live: (x) => { lastLive = x; if (liveSink) liveSink(x); },
       status: (k) => {
         if (k === 'gone') { ui.toast && ui.toast(`${oppName()} disconnected. Waiting for them to come back`); board.drawStatus(1, `Waiting for ${oppName()}`); }
         if (k === 'back') { ui.toast && ui.toast(`${oppName()} is back`); board.drawStatus(1, ''); }
@@ -1184,38 +1219,102 @@ const Game = (() => {
       else board.drawDice(view);
       if (stale(ep)) return;
     }
+    // show their checkers moving as they move them (undos too); the final move then only fills any gap
+    const mirror = liveMirror(ep, view, dice);
+    liveSink = (x) => { if (x && Net.state && x.k === Net.state.inSeq) mirror.sync(arr(x.m).slice(0, 8).map(v => v | 0)); };
+    if (lastLive) liveSink(lastLive);   // moves they made while their dice were still landing here
     let act;
-    while (true) {
-      act = await Net.next();
-      if (stale(ep)) return;
-      if (act.t === 'move') break;
-      if (act.t === 'resign') { if (await answerResign(act.l)) return; }
-    }
-    const pairs = arr(act.m).slice(0, 8).map(x => x | 0);
-    if (!pairs.length) rec.forcedNone = true;
-    else {
-      const { subs } = R.simulatePairs(c.b[1], c.b[0], pairs);
-      const ids = [];
-      for (const s of subs) {
-        const sim = R.simulatePairs(c.b[1], c.b[0], [s.from, s.to]);
-        c.b[1] = sim.me; c.b[0] = sim.opp;
-        ids.push(await board.moveChecker(1, s.from, s.to, s.hit));
+    try {
+      while (true) {
+        act = await Net.next();
         if (stale(ep)) return;
-        await sleep(60);
+        if (act.t === 'move') break;
+        if (act.t === 'resign') { if (await answerResign(act.l)) return; }
       }
-      rec.subs = subs.map(s => ({ from: s.from, to: s.to, die: s.die, hit: s.hit }));
-      lastBotIds = ids.filter(x => x != null);
+    } finally { liveSink = null; }
+    const pairs = arr(act.m).slice(0, 8).map(x => x | 0);
+    if (!pairs.length) { await mirror.sync([]); rec.forcedNone = true; }
+    else {
+      await mirror.sync(pairs);
+      if (stale(ep)) return;
+      rec.subs = mirror.shown.map(s => ({ from: s.from, to: s.to, die: s.die, hit: s.hit }));
+      lastBotIds = mirror.shown.map(s => s.id).filter(x => x != null);
       board.setMarked(lastBotIds);
     }
+    mirror.done();
     analyseMove(rec);
     game().recs.push(rec);
     c.dice = null;
     save();
-    await sleep(200);
+    await sleep(90);
     if (stale(ep)) return;
     board.drawDice(null);
     if (checkWin(1)) return;
     humanPreRoll();
+  }
+  // Mirrors the friend's turn on your board as their moves come in. sync(pairs) brings the board to
+  // "start of turn + pairs", undoing and replaying only what changed; calls run one after another.
+  let liveSink = null, liveBase = null, lastLive = null;
+  function liveMirror(ep, view, dice) {
+    const c = cur(), base = clone(c.b), shown = [], snaps = [];
+    liveBase = base;
+    let chain = Promise.resolve();
+    const dbl = dice[0] === dice[1];
+    const showDice = () => {
+      // which dice are spent (a checker borne off with a bigger die counts against the smallest die that does it)
+      let used;
+      if (dbl) used = [0, 1, 2, 3].map(i => i < shown.length);
+      else {
+        used = [false, false];
+        for (const s of shown) {
+          let k = view.vals.findIndex((v, i) => !used[i] && v === s.die);
+          if (k < 0 && s.to < 0) { const opts = view.vals.map((v, i) => [v, i]).filter(([v, i]) => !used[i] && v >= s.from + 1).sort((a, b) => a[0] - b[0]); if (opts.length) k = opts[0][1]; }
+          if (k >= 0) used[k] = true;
+        }
+      }
+      board.drawDice({ ...view, used });
+    };
+    function plan(pairs) {
+      // the board each step leads to, checking every step is possible (anything odd is ignored)
+      const me = base[1].slice(), opp = base[0].slice(), out = [];
+      for (let i = 0; i + 1 < pairs.length; i += 2) {
+        const from = pairs[i], to = pairs[i + 1];
+        if (from < 0) break;   // padding
+        if (!(from >= 0 && from <= 24 && to >= -1 && to < 24 && to < from && me[from] > 0)) return null;
+        if (to >= 0 && opp[23 - to] >= 2) return null;
+        const sim = R.simulatePairs(me, opp, [from, to]);
+        me.splice(0, 25, ...sim.me); opp.splice(0, 25, ...sim.opp);
+        out.push(sim.subs[0]);
+      }
+      return out;
+    }
+    function sync(pairs) {
+      chain = chain.then(async () => {
+        if (stale(ep)) return;
+        const target = plan(pairs);
+        if (!target) return;
+        let i = 0;
+        while (i < shown.length && i < target.length && shown[i].from === target[i].from && shown[i].to === target[i].to) i++;
+        while (shown.length > i) {
+          const s = shown.pop(); c.b = snaps.pop();
+          await board.unmoveChecker(1, s.from, s.to, s.hit);
+          if (stale(ep)) return;
+          showDice();
+        }
+        for (let j = i; j < target.length; j++) {
+          const s = { ...target[j] };
+          snaps.push(clone(c.b));
+          const sim = R.simulatePairs(c.b[1], c.b[0], [s.from, s.to]);
+          c.b[1] = sim.me; c.b[0] = sim.opp;
+          shown.push(s);
+          showDice();
+          s.id = await board.moveChecker(1, s.from, s.to, s.hit);
+          if (stale(ep)) return;
+        }
+      }).catch(e => console.warn('live move', e));
+      return chain;
+    }
+    return { sync, shown, done() { liveBase = null; } };
   }
 
   /* ---------- game end ---------- */
@@ -1444,7 +1543,7 @@ const Game = (() => {
     newMatch, resume, nextGame, leaveFriend, humanResign, holdForResign, stats, ensureAnalysis, band, requestRematch, declineRematch, resignPoints,
     get canResignNow() { return canOfferResign(); },
     get rematchAsked() { return !!(rm && rm.M === M && rm.theirs); },
-    get M() { return M; }, get phase() { return phase; }, get busy() { return busy; }, previewBest,
+    get M() { return M; }, get phase() { return phase; }, get busy() { return busy; }, previewBest, queueTap,
     canPick, dests, tap, drop, undo, diceTap, swapDice,
     button(id) {
       Sound.unlock();

@@ -9,6 +9,7 @@ const RoomNet = (() => {
   let queue = [], waiters = [];
   let oppPeer = null, oppSeen = false, queued = 0;
   let hooks = {};
+  let live = null, liveIn = null;   // checker moves made so far this turn (mine / theirs), shown live
   const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
   async function available() {
@@ -25,7 +26,7 @@ const RoomNet = (() => {
   }
   function publish() {
     if (!gr || !st) return;
-    gr.presence({ v: 1, code: st.code, role: st.role, name: st.name, cfg: st.cfg || null, log: st.out.slice(-30) }).catch(() => { });
+    gr.presence({ v: 1, code: st.code, role: st.role, name: st.name, cfg: st.cfg || null, log: st.out.slice(-30), live: live || null }).catch(() => { });
   }
   function deliver() {
     while (waiters.length && queue.length) waiters.shift()(queue.shift());
@@ -43,11 +44,13 @@ const RoomNet = (() => {
       const log = Array.isArray(opp.presence.log) ? opp.presence.log : [];
       for (const a of log.slice().sort((x, y) => x.s - y.s)) if (a && a.s === queued + 1) { if (a.t === 'bye') { queued = a.s; st.inSeq = a.s; hooks.status && hooks.status('left'); } else queue.push(a); queued = a.s; }
       deliver();
+      const lv = opp.presence.live || null;
+      if (lv !== liveIn) { liveIn = lv; if (lv && hooks.live) hooks.live(lv); }
     } else if (had) hooks.status && hooks.status('gone');
   }
   async function enter(state, h) {
     st = state; hooks = h || {};
-    queue = []; waiters = []; oppPeer = null; oppSeen = false; queued = st.inSeq;
+    queue = []; waiters = []; oppPeer = null; oppSeen = false; queued = st.inSeq; live = null; liveIn = null;
     if (!(await available())) throw new Error('unavailable');
     if (gr) { try { await gr.leave(); } catch (e) { } gr = null; }
     gr = await room.join(rname(st.code));
@@ -61,7 +64,8 @@ const RoomNet = (() => {
     async join(code, name, h) { await enter({ code: code.toUpperCase().replace(/[^A-Z0-9]/g, ''), role: 'guest', name, cfg: null, out: [], inSeq: 0, oppName: '' }, h); return st; },
     async resume(state, h) { await enter(state, h); return st; },
     setHooks(h) { hooks = Object.assign(hooks, h); },
-    send(action) { if (!st) return; action.s = st.out.length + 1; st.out.push(action); publish(); },
+    send(action) { if (!st) return; action.s = st.out.length + 1; st.out.push(action); live = null; publish(); },
+    live(x) { if (!st) return; live = x; publish(); },
     // next action from the friend (in order)
     next() { return new Promise(res => { waiters.push(res); deliver(); }).then(a => { st.inSeq = a.s; return a; }); },
     cancelWaits() { waiters = []; },
@@ -154,7 +158,9 @@ const FbNet = (() => {
       }
       deliver();
     });
-    offs.push(() => nref.off('value', h1), () => oref.off('value', h2), () => lref.off('child_added', h3));
+    const vref = ref(other() + '/live');
+    const h4 = vref.on('value', s => { const v = s.val(); if (v && hooks.live) hooks.live(v); });
+    offs.push(() => nref.off('value', h1), () => oref.off('value', h2), () => lref.off('child_added', h3), () => vref.off('value', h4));
   }
   function reset(state, h) {
     offs.forEach(f => { try { f(); } catch (e) { } }); offs = [];
@@ -206,6 +212,8 @@ const FbNet = (() => {
       st.out.push(action);
       ref(st.role + '/log/' + action.s).set(action).catch(e => console.warn('send failed', e));
     },
+    // the checker moves made so far this turn, so the other side can watch them happen
+    live(x) { if (st && db) ref(st.role + '/live').set(x).catch(() => { }); },
     next() { return new Promise(res => { waiters.push(res); deliver(); }).then(a => { st.inSeq = a.s; return a; }); },
     cancelWaits() { waiters = []; },
     async leave() {
@@ -231,6 +239,7 @@ const Net = {
   resume(s, h) { return this.impl.resume(s, h); },
   setHooks(h) { return this.impl.setHooks(h); },
   send(a) { return this.impl.send(a); },
+  live(x) { return this.impl.live(x); },
   next() { return this.impl.next(); },
   cancelWaits() { return this.impl.cancelWaits(); },
   leave() { return this.impl.leave(); },

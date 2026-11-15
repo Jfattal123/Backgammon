@@ -799,7 +799,7 @@ function createBoard(svg, cb) {
     statusTxt[side] = text || '';
     if (!text && statusTxt[1 - side]) { const o = 1 - side; statusTxt[side] = ''; return drawStatus(o, statusTxt[o]); }
     let el = svg.querySelector('#lyStatus');
-    if (!el) { el = document.createElementNS(SVGNS, 'g'); el.id = 'lyStatus'; layers.btn.before(el); }
+    if (!el) { el = document.createElementNS(SVGNS, 'g'); el.id = 'lyStatus'; el.setAttribute('pointer-events', 'none'); layers.btn.before(el); }
     if (!text) { el.innerHTML = ''; return; }
     const c = g.halfCenter(side);
     const tw = Math.max(96, String(text).length * 8.4 + 62), dots = [0, 1, 2].map(i => `<circle class="sdot" style="animation-delay:${i * .14}s" cx="${-tw / 2 + 20 + i * 9}" cy="0" r="3.2" fill="#f2b84b"/>`).join('');
@@ -905,7 +905,11 @@ function createBoard(svg, cb) {
     if (dests && selFrom != null && dests.has(from) && from !== selFrom) {
       const f = selFrom; selFrom = null; clearDests(); cb.drop(f, from); return;
     }
-    if (!cb.canPick(from)) { nudge(ce); cb.cantPick && cb.cantPick(from); return; }
+    if (!cb.canPick(from)) {
+      // tapped while the last checker is still sliding: it's played as soon as that one lands
+      if (cb.queueTap && cb.queueTap(from)) { ev.preventDefault(); return; }
+      nudge(ce); cb.cantPick && cb.cantPick(from); return;
+    }
     // always drag the top checker of that stack
     const k = locKey(where.get(id)); const st = stacks.get(k); id = st[st.length - 1];
     const start = svgPoint(ev);

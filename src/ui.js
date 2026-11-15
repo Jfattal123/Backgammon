@@ -673,6 +673,7 @@ const UI = (() => {
     $('#btnReview').onclick = () => { if (Game.M && Game.M.opp === 'friend' && !Game.M.over && Game.phase !== 'over' && !Game.M.friendLeft) { toast('Analysis opens when the game ends'); return; } if (Game.M) Review.open(Game.M, Game.M.games.length > 1 ? 'all' : 0); else { const h = Store.get('history', [])[0]; if (h) Review.open(h); else toast('Play a game first'); } };
     board = createBoard($('#board'), {
       canPick: (f) => Game.canPick(f),
+      queueTap: (f) => Game.queueTap(f),
       cantPick: () => { if (Game.phase === 'moving' && !Game.busy) toast('That checker can’t move'); },
       dests: (f) => Game.dests(f),
       tap: (f) => Game.tap(f),
