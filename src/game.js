@@ -108,7 +108,16 @@ const Play = (() => {
     const pi = playedMove ? all.indexOf(playedMove) : -1;
     return { moves: out, played: pi, total: base.total };
   }
-  return { call, moves, get size() { return readyWorkers().length; } };
+  // score a few given moves at full depth for `level` (the tutor uses this to finish a search started early)
+  async function score(opp, me, list, ctx, level) {
+    await started;
+    const S = SEARCH[level], plies = S ? S.plies : 0;
+    const items = list.map(m => ({ move: m.move }));
+    await scoreSplit(opp, me, items, plies, ctx, level);
+    return items;
+  }
+  const depth = (level) => (SEARCH[level] ? SEARCH[level].plies : 0);
+  return { call, moves, score, depth, get size() { return readyWorkers().length; } };
 })();
 /* ===================== HELPERS ===================== */
 const LEVELS = [
@@ -243,6 +252,7 @@ const Game = (() => {
   let lastBotIds = [];
   let resignOffered = 0;
   let pendingRecord = null; // move record in progress (tutor first attempt)
+  let tutorPre = null;       // {rec, lvl, res: Promise} the tutor's search, started when the dice were rolled
   // Every new match, game, resume or game end bumps the epoch. Long-running turn flows (bot thinking,
   // waiting for a friend, animations) note the epoch when they start and stop if it has moved on, so a
   // flow from a finished or abandoned game can never touch the current one.
@@ -301,7 +311,7 @@ const Game = (() => {
         const played = R.toGnubg(rec.subs);
         const res = precomputed || (fg ? await Play.moves(opp, me, rec.dice[0], rec.dice[1], rec.ctx, aLevel(), played)
           : await Engine.call('moves', opp, me, rec.dice[0], rec.dice[1], rec.ctx, aLevel(), played));
-        let pi = precomputed ? 0 : res.played;
+        let pi = precomputed ? (precomputed.played >= 0 ? precomputed.played : 0) : res.played;
         if (pi < 0) pi = 0;
         // best = highest eq among full-ply moves
         let best = res.moves[0];
@@ -484,6 +494,14 @@ const Game = (() => {
     const { me, opp } = sides(0);
     turnInfo = R.turnInfo(me, opp, dice[0], dice[1]);
     pendingRecord = { k: 'move', p: 0, dice: dice.slice(), b: clone(c.b), ctx: ctxFor(0), subs: [] };
+    // tutor: start working out the best move now (while the dice tumble and you think),
+    // so checking your move is instant once you've played it
+    tutorPre = null;
+    if (M.mode === 'tutor' && turnInfo.finals.size > 1) {
+      const rec = pendingRecord, lvl = aLevel();
+      tutorPre = { rec, lvl, res: Play.moves(opp, me, dice[0], dice[1], rec.ctx, lvl) };
+      tutorPre.res.catch(() => { });
+    }
     if (turnInfo.maxTotal === 0) {
       phase = 'auto';
       pendingRecord.forcedNone = true;
@@ -537,7 +555,18 @@ const Game = (() => {
     board.drawDice({ p: 0, vals: c.dice[0] === c.dice[1] ? [c.dice[0], c.dice[0], c.dice[0], c.dice[0]] : c.dice.slice(), used: usedFlags(c.dice[0] === c.dice[1] ? [c.dice[0], c.dice[0], c.dice[0], c.dice[0]] : c.dice), order: order.slice() });
     const btns = [];
     if (partial.length) btns.push({ id: 'undo', label: 'Undo', kind: 'ghost', side: 0, slot: 'farleft', w: 100, aria: 'Undo last checker move' });
-    if (turnInfo && partial.length === turnInfo.maxTotal) btns.push({ id: 'done', label: 'Done', kind: 'accent', side: 0, slot: 'farright', w: 100, aria: 'Confirm move' });
+    if (turnInfo && partial.length === turnInfo.maxTotal) {
+      btns.push({ id: 'done', label: 'Done', kind: 'accent', side: 0, slot: 'farright', w: 100, aria: 'Confirm move' });
+      // tutor: your move is complete, so judge it now rather than when you press Done
+      const pre = tutorPre;
+      if (pre && pendingRecord && pre.rec === pendingRecord && !pendingRecord.tutorDone) {
+        const subs = partial.map(x => ({ from: x.from, to: x.to, die: x.die, hit: x.hit })), key = subsKey(subs);
+        if (!pre.judged || pre.judged.key !== key) {
+          pre.judged = { key, p: pre.res.then(res => judgePlayed(pre.rec, subs, res, pre.lvl)) };
+          pre.judged.p.catch(() => { });
+        }
+      }
+    }
     board.drawButtons(btns);
     ui.update && ui.update();
   }
@@ -636,6 +665,25 @@ const Game = (() => {
 
   function tutorFlag(loss) { return Settings.tutorAny ? loss > 0.001 : loss >= SKILL.doubtful; }
 
+  // Finish the tutor's early search for the move you actually played: find it in the list and make sure it
+  // and the best move are judged at full depth, exactly as a search told the played move would do.
+  const subsKey = (subs) => subs.map(x => x.from + '>' + x.to).join(' ');
+  async function judgePlayed(rec, subs, res, lvl) {
+    const me = rec.b[0], opp = rec.b[1];
+    const k = (pairs) => { const x = R.simulatePairs(me, opp, pairs); return R.key(x.me, x.opp); };
+    const want = k(R.toGnubg(subs));
+    const moves = res.moves.map(m => ({ ...m }));
+    const pi = moves.findIndex(m => k(m.move) === want);
+    if (pi < 0) return null;   // shouldn't happen: fall back to a fresh search
+    const full = Play.depth(lvl), need = [];
+    if (pi !== 0 && moves[pi].ply < full) need.push(moves[pi]);
+    if (need.length && moves[0].ply < full) need.push(moves[0]);
+    if (need.length) {
+      const sc = await Play.score(opp, me, need, rec.ctx, lvl);
+      need.forEach((m, i) => { m.eq = sc[i].eq; m.probs = sc[i].probs; m.ply = full; });
+    }
+    return { moves, played: pi, total: res.total };
+  }
   async function commitHuman(forced) {
     const ep = epoch;
     phase = 'committing';
@@ -647,8 +695,17 @@ const Game = (() => {
     rec.forced = forced || (turnInfo && turnInfo.finals.size <= 1);
     if (M.mode === 'tutor' && !rec.forced && !rec.forcedNone && !rec.tutorDone) {
       phase = 'tutor';
-      board.drawStatus(0, 'Checking your move');
-      await analyseMove(rec, null, true);
+      const pre = tutorPre && tutorPre.rec === rec && tutorPre.lvl === aLevel() ? tutorPre : null;
+      tutorPre = null;
+      const t = setTimeout(() => { if (!stale(ep)) board.drawStatus(0, 'Checking your move'); }, 150);
+      let res = null;
+      if (pre) {
+        const key = subsKey(rec.subs);
+        try { res = await (pre.judged && pre.judged.key === key ? pre.judged.p : judgePlayed(rec, rec.subs, await pre.res, pre.lvl)); } catch (e) { res = null; }
+      }
+      if (stale(ep)) { clearTimeout(t); return; }
+      await analyseMove(rec, res, true);
+      clearTimeout(t);
       board.drawStatus(0, '');
       if (stale(ep)) return;
       rec.tutorDone = true;
