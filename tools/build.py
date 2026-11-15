@@ -17,7 +17,25 @@ head = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}'
         'body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>')
 site = body.replace('<!--WORKER-->', '')
-open('index.html', 'w').write(head + site.replace('<div id="app">', '</head><body>\n<div id="app">', 1) + '\n</body></html>')
+# installable, offline-capable app (GitHub Pages only): manifest, icons and a service worker
+pwa = ('<link rel="manifest" href="manifest.webmanifest">'
+       '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">'
+       '<meta name="apple-mobile-web-app-title" content="Prime">'
+       '<script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) addEventListener("load", function () {'
+       ' var first = !navigator.serviceWorker.controller;'
+       ' navigator.serviceWorker.register("sw.js").then(function (reg) { if (!first) return; var w = reg.installing || reg.waiting; if (!w) return;'
+       ' w.addEventListener("statechange", function () { if (w.state === "activated" && window.UI && UI.toast) UI.toast("Ready to play offline"); }); }).catch(function () {}); });</script>')
+page = head + pwa + site.replace('<div id="app">', '</head><body>\n<div id="app">', 1) + '\n</body></html>'
+open('index.html', 'w').write(page)
+import hashlib
+pre = ['./', 'index.html', 'manifest.webmanifest', 'engine-worker.js', 'engine-api.js', 'gnubg-engine.js', 'gnubg-engine.wasm',
+       'gnubg-engine-nosimd.js', 'gnubg-engine-nosimd.wasm', 'gnubg-engine-data.bin',
+       'vendor/firebase-app-compat.js', 'vendor/firebase-auth-compat.js', 'vendor/firebase-database-compat.js',
+       'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png']
+h = hashlib.sha1()
+for f in pre[1:]: h.update(open(f, 'rb').read())
+sw = open('src/sw.js').read().replace('__VERSION__', h.hexdigest()[:12]).replace('__PRECACHE__', json.dumps(pre))
+open('sw.js', 'w').write(sw)
 os.makedirs('artifact', exist_ok=True)
 open('artifact/index.html', 'w').write(site)
 if os.path.exists('tools/gnubg-engine-single.js'):

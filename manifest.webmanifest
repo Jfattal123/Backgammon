@@ -1,0 +1,16 @@
+{
+  "name": "Prime Backgammon",
+  "short_name": "Prime",
+  "description": "Backgammon against GNU Backgammon, with match play, the cube, analysis and play-a-friend. Works offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#172427",
+  "theme_color": "#172427",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
