@@ -1,7 +1,7 @@
 /* Offline support for the installed app. Built by tools/build.py, which fills in VERSION and PRECACHE.
    The page (index.html) is fetched fresh when there's a connection and served from the cache when not;
    everything else (engine, nets, scripts, icons) comes from the cache, refreshed whenever a new version ships. */
-const VERSION = '99b9f1164c3e';
+const VERSION = '1ce18db54c26';
 const CACHE = 'prime-' + VERSION, FONTS = 'prime-fonts';
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "engine-worker.js", "engine-api.js", "gnubg-engine.js", "gnubg-engine.wasm", "gnubg-engine-nosimd.js", "gnubg-engine-nosimd.wasm", "gnubg-engine-data.bin", "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-database-compat.js", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png"];
 

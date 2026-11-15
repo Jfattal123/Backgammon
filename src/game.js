@@ -135,6 +135,14 @@ function band(loss) {
   if (loss >= SKILL.doubtful) return 'doubtful';
   return 'good';
 }
+// how picky the tutor is: it steps in when a decision costs at least `min` (equity)
+const TUTOR_LEVELS = [
+  { v: 'any', name: 'Every slip', note: 'anything not best', min: 0.001 },
+  { v: 'doubtful', name: 'Doubtful and worse', note: 'loses 0.04+', min: 0.04 },
+  { v: 'error', name: 'Errors and blunders', note: 'loses 0.08+', min: 0.08 },
+  { v: 'blunder', name: 'Blunders only', note: 'loses 0.16+', min: 0.16 }
+];
+const tutorLevel = (v) => TUTOR_LEVELS.find(t => t.v === v) || TUTOR_LEVELS[0];
 const BAND_LABEL = { good: 'Good', best: 'Best', doubtful: 'Doubtful', error: 'Error', blunder: 'Blunder' };
 function prLabel(pr) {
   if (pr == null || isNaN(pr)) return '';
@@ -231,9 +239,10 @@ const Store = {
   del(k) { try { localStorage.removeItem('prime.v1.' + k); } catch (e) { } }
 };
 
-const DEFAULT_SETTINGS = { level: 7, diceHighFirst: true, tutorAny: true, speed: 'normal', diceAnim: true, autoForced: true, autoRoll: true, flip: false, pips: true, sound: true, haptics: true, humanLight: true };
+const DEFAULT_SETTINGS = { level: 7, diceHighFirst: true, tutorLevel: 'any', speed: 'normal', diceAnim: true, autoForced: true, autoRoll: true, flip: false, pips: true, sound: true, haptics: true, humanLight: true };
 let Settings = Object.assign({}, DEFAULT_SETTINGS, Store.get('settings', {}));
 if (!Settings.v2) { Settings.level = 7; Settings.v2 = true; Store.set('settings', Settings); } // Grandmaster is now the default
+if (!Settings.tutorLevel) { Settings.tutorLevel = Settings.tutorAny === false ? 'doubtful' : 'any'; Store.set('settings', Settings); } // was a yes/no switch
 Settings.flip = false; // always: you move from top right round to bottom right
 const SPEEDS = { fast: .6, normal: 1, slow: 1.5 };
 const DICE_MS = 460;   // a throw at normal speed
@@ -373,7 +382,7 @@ const Game = (() => {
     epoch++;
     M = {
       id: 'm' + Date.now().toString(36), created: Date.now(), mode: opts.mode, matchTo: opts.matchTo, cubeOn: opts.cubeOn,
-      jacoby: opts.jacoby, level: opts.level, score: [0, 0], crawfordUsed: false, games: [], cur: null, over: false, winner: null,
+      jacoby: opts.jacoby, level: opts.level, tutorLevel: opts.tutorLevel || Settings.tutorLevel, score: [0, 0], crawfordUsed: false, games: [], cur: null, over: false, winner: null,
       opp: opts.opp || 'bot', net: opts.net || null, oppName: opts.oppName || ''
     };
     if (friend()) { M.mode = 'normal'; Net.setHooks(netHooks()); }
@@ -663,7 +672,7 @@ const Game = (() => {
     return commitHuman(false);
   }
 
-  function tutorFlag(loss) { return Settings.tutorAny ? loss > 0.001 : loss >= SKILL.doubtful; }
+  function tutorFlag(loss) { return loss >= tutorLevel((M && M.tutorLevel) || Settings.tutorLevel).min; }
 
   // Finish the tutor's early search for the move you actually played: find it in the list and make sure it
   // and the best move are judged at full depth, exactly as a search told the played move would do.

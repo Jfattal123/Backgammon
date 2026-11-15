@@ -193,7 +193,18 @@ const UI = (() => {
     if (st.format === 'single') return st.cube ? 'One game played for points: you can double and redouble. The game is worth 1, 2 or 3 points times the cube.' : 'One game, no cube: a win is worth 1, a gammon 2, a backgammon 3.';
     return st.cube ? 'Crawford rule applies automatically.' : 'No doubling: each game is worth 1, 2 or 3 points.';
   }
+  // the tutor's pickiness: a dropdown, the same on the new-match screen and in Settings
+  function tutorSelect(id, val) {
+    return `<select class="sel" id="${id}" aria-label="When the tutor steps in">${TUTOR_LEVELS.map(t => `<option value="${t.v}" ${t.v === val ? 'selected' : ''}>${t.name} · ${t.note}</option>`).join('')}</select>`;
+  }
+  function modeNote(mode, tl) {
+    if (mode !== 'tutor') return 'Play straight through. Full move-by-move analysis is ready after each game.';
+    const what = { any: 'any move or cube decision that isn’t the best', doubtful: 'a doubtful move or cube decision, or worse', error: 'an error or a blunder', blunder: 'a blunder' }[tl] || 'any move that isn’t the best';
+    return `Stops you after ${what}, and lets you think again or see the right play.`;
+  }
+  let setupTutor = null;
   function showSetup() {
+    setupTutor = Settings.tutorLevel || 'any';
     const saved = Store.get('current', null);
     const canResume = saved && !saved.over && !saved.friendLeft && saved.cur && (!Game.M || Game.M.id !== saved.id || Game.M.over);
     const hist = Store.get('history', []).slice(0, 4);
@@ -209,7 +220,9 @@ const UI = (() => {
         <small id="cubeNote" style="color:var(--muted);font-size:12.5px;margin-top:-4px">${cubeNote(st)}</small>
         <div id="jacWrap" ${st.format === 'single' && st.cube ? '' : 'hidden'}>${toggle('sJac', 'Jacoby rule', 'A gammon or backgammon only counts once the cube has been turned. Off: gammons always count.', st.jacoby)}</div></div>
       <div class="field botonly"><span class="lab">Mode</span>${seg('sMode', [['normal', 'Normal'], ['tutor', 'Tutor']], st.mode)}
-        <small id="modeNote" style="color:var(--muted);font-size:13px;line-height:1.45">${st.mode === 'tutor' ? 'Tells you straight after any move or cube decision that isn’t best, and lets you reassess or see the right play.' : 'Play straight through. Full move-by-move analysis is ready after each game.'}</small></div>
+        <small id="modeNote" style="color:var(--muted);font-size:13px;line-height:1.45">${modeNote(st.mode, setupTutor)}</small></div>
+      <div class="field botonly" id="tutField" ${st.mode === 'tutor' ? '' : 'hidden'}><span class="lab">Tutor steps in for</span>
+        ${tutorSelect('sTutor', setupTutor)}</div>
       <div class="field botonly"><span class="lab">Opponent</span>
         <select class="sel" id="sLevel" aria-label="Opponent strength">${LEVELS.map(l => `<option value="${l.v}" ${Settings.level === l.v ? 'selected' : ''}>${l.name} · ${l.note}</option>`).join('')}</select></div>
       <div class="row botonly" style="justify-content:space-between"><div id="engLine">${engineLine()}</div><button class="btnx primary" id="startBtn" type="button" autofocus>Start ${st.format === 'single' ? 'game' : 'match'}</button></div>
@@ -239,7 +252,8 @@ const UI = (() => {
     $('#fJoin').onclick = () => { const c = ($('#fCode').value || '').trim().toUpperCase(); if (c.length < 4) { $('#fNote').textContent = 'Enter the code your friend sent you.'; return; } joinFriend(c, nameNow()); };
     $('#fCode').onkeydown = (e) => { if (e.key === 'Enter') $('#fJoin').click(); };
     wireSeg(card, 'sFormat', (v) => { st.format = v; $('#lenField').hidden = v === 'single'; $('#jacWrap').hidden = !(v === 'single' && st.cube); $('#cubeNote').textContent = cubeNote(st); $('#startBtn').textContent = v === 'single' ? 'Start game' : 'Start match'; });
-    wireSeg(card, 'sMode', (v) => { st.mode = v; $('#modeNote').textContent = v === 'tutor' ? 'Tells you straight after any move or cube decision that isn’t best, and lets you reassess or see the right play.' : 'Play straight through. Full move-by-move analysis is ready after each game.'; });
+    wireSeg(card, 'sMode', (v) => { st.mode = v; $('#modeNote').textContent = modeNote(v, setupTutor); $('#tutField').hidden = v !== 'tutor'; });
+    $('#sTutor').onchange = (e) => { setupTutor = e.target.value; $('#modeNote').textContent = modeNote(st.mode, setupTutor); };
     const setLen = (n) => { st.len = Math.max(1, Math.min(25, n)); $('#lenOut').textContent = st.len + (st.len === 1 ? ' pt' : ' pts'); };
     $('#lenDn').onclick = () => setLen(st.len - (st.len > 3 ? 2 : 1));
     $('#lenUp').onclick = () => setLen(st.len + (st.len >= 3 ? 2 : 1));
@@ -251,7 +265,7 @@ const UI = (() => {
       Store.set('setup', st);
       closeCard();
       if (Game.M && Game.M.opp === 'friend') Game.leaveFriend();
-      Game.newMatch({ mode: st.mode, matchTo: st.format === 'single' ? 0 : st.len, cubeOn: st.cube, jacoby: st.format === 'single' && st.cube && st.jacoby, level: Settings.level });
+      Game.newMatch({ mode: st.mode, matchTo: st.format === 'single' ? 0 : st.len, cubeOn: st.cube, jacoby: st.format === 'single' && st.cube && st.jacoby, level: Settings.level, tutorLevel: setupTutor });
     };
     if (canResume) $('#resume').onclick = () => { closeCard(); Game.resume(saved); };
     card.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => { const h = Store.get('history', []).find(x => x.id === b.dataset.hist); if (h) { closeCard(); Review.open(h); } });
@@ -425,7 +439,8 @@ const UI = (() => {
     const S = Settings;
     const s = openCard(`<h2>Settings</h2>
       <div class="field"><span class="lab">Opponent</span><select class="sel" id="stLevel" aria-label="Opponent strength">${LEVELS.map(l => `<option value="${l.v}" ${S.level === l.v ? 'selected' : ''}>${l.name} · ${l.note}</option>`).join('')}</select></div>
-      <div class="field"><span class="lab">Tutor flags</span>${seg('stTutor', [['any', 'Any move that isn’t best'], ['doubtful', 'Doubtful or worse']], S.tutorAny ? 'any' : 'doubtful')}</div>
+      <div class="field"><span class="lab">Tutor steps in for</span>${tutorSelect('stTutor', S.tutorLevel)}
+        <small style="color:var(--muted);font-size:12.5px">Your default for new tutor matches. You can change it for each match when you start one.</small></div>
       <div class="field"><span class="lab">Animation speed</span>${seg('stSpeed', [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']], S.speed)}</div>
       <div class="field"><span class="lab">Your checkers</span>${seg('stCol', [['1', 'Light'], ['0', 'Dark']], S.humanLight ? '1' : '0')}</div>
       <div class="field">
@@ -440,7 +455,7 @@ const UI = (() => {
     const card = s.querySelector('.card');
     const apply = () => { Store.set('settings', Settings); Sound.on = Settings.sound; Game.redraw(); update(); };
     $('#stLevel').onchange = (e) => { S.level = +e.target.value; if (Game.M && !Game.M.over) Game.M.level = S.level; apply(); };
-    wireSeg(card, 'stTutor', v => { S.tutorAny = v === 'any'; apply(); });
+    $('#stTutor').onchange = (e) => { S.tutorLevel = e.target.value; apply(); };
     wireSeg(card, 'stSpeed', v => { S.speed = v; apply(); });
     wireSeg(card, 'stCol', v => { S.humanLight = v === '1'; apply(); });
     $('#stDice').onchange = e => { S.diceAnim = e.target.checked; apply(); };
