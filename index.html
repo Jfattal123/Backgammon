@@ -122,6 +122,10 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 #board .btn .bi.in { animation: btnIn .26s var(--spring) backwards; }
 @keyframes btnIn { from { transform: scale(.82); opacity: 0; } to { transform: none; opacity: 1; } }
 #board .die { transition: opacity .2s; }
+/* half (or all) of a die being spent: the bright copy sinks away over the dimmed one */
+.spend { animation: spend .34s cubic-bezier(.3,.7,.4,1) forwards; }
+@keyframes spend { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .spend { animation: none; opacity: 0; } }
 #board .dst { animation: dstIn .16s ease-out backwards; }
 #board .dst .spot { animation: spot 1.1s ease-in-out infinite; }
 #board .dst.hot .glow, #board rect.dst.hot { fill: rgba(242, 184, 75, .42); }
@@ -283,7 +287,7 @@ select.sel { appearance: none; background: var(--bg); border: 0; border-radius: 
 .rvh h1 { font-family: var(--font-display); font-weight: 400; font-size: 22px; margin: 0; }
 .rvh .spacer { flex: 1 1 0; order: 7; }
 .rvh .loading { gap: 6px; font-size: 12.5px; }
-.rvh .who { order: 5; } .rvh .bands { order: 6; } .rvh #rvStatsBtn { order: 8; }
+.rvh .who { order: 5; } .rvh .bands { order: 6; } .rvh #rvStatsBtn { order: 8; } .rvh #rvExportBtn { order: 8; }
 select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-width: 0; max-width: 150px; }
 .seg.sm { flex-wrap: nowrap; flex: 0 0 auto; }
 .seg.sm button { flex: 0 0 auto; min-height: 36px; padding: 6px 12px; font-size: 13px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
@@ -360,15 +364,15 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 .small { font-size: 12px; line-height: 1.5; }
 
 /* the move list and the stats slide up as sheets */
-.rvlist, .rvstats { position: fixed; left: 0; right: 0; bottom: 0; top: 16%; z-index: 17; background: var(--surface-2); border-radius: 20px 20px 0 0; box-shadow: var(--shadow);
+.rvlist, .rvstats, .rvexport { position: fixed; left: 0; right: 0; bottom: 0; top: 16%; z-index: 17; background: var(--surface-2); border-radius: 20px 20px 0 0; box-shadow: var(--shadow);
   display: flex; flex-direction: column; transform: translateY(104%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s; }
-.review[data-sheet="list"] .rvlist, .review[data-sheet="stats"] .rvstats { transform: none; visibility: visible; transition: transform .22s ease; }
+.review[data-sheet="list"] .rvlist, .review[data-sheet="stats"] .rvstats, .review[data-sheet="export"] .rvexport { transform: none; visibility: visible; transition: transform .22s ease; }
 .rvscrim { position: fixed; inset: 0; z-index: 16; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .2s; }
-.review[data-sheet="list"] .rvscrim, .review[data-sheet="stats"] .rvscrim { opacity: 1; pointer-events: auto; }
+.review[data-sheet="list"] .rvscrim, .review[data-sheet="stats"] .rvscrim, .review[data-sheet="export"] .rvscrim { opacity: 1; pointer-events: auto; }
 .sheet-h { display: flex; justify-content: space-between; align-items: center; padding: 10px 10px 6px 18px; font-size: 17px; flex: 0 0 auto; }
 .sheet-b { flex: 1 1 auto; overflow: auto; min-height: 0; overscroll-behavior: contain; padding: 0 10px max(14px, env(safe-area-inset-bottom, 0px)); }
 @media (min-width: 700px) {
-  .rvlist, .rvstats { top: 0; left: auto; width: 420px; border-radius: 20px 0 0 20px; transform: translateX(104%); }
+  .rvlist, .rvstats, .rvexport { top: 0; left: auto; width: 420px; border-radius: 20px 0 0 20px; transform: translateX(104%); }
 }
 /* move list rows */
 .mrow { display: grid; grid-template-columns: 26px 12px 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 8px; border-radius: 10px; cursor: pointer; border: 0; background: transparent; width: 100%; text-align: left; font-size: 14px; color: inherit; }
@@ -422,7 +426,7 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
   .rv-main { gap: 6px; padding-top: 6px; }
   .dcard { padding: 8px 10px; gap: 3px; }
   .navbtn { height: 38px; }
-  .rvlist, .rvstats { top: 0; left: auto; width: min(420px, 70%); border-radius: 20px 0 0 20px; transform: translateX(104%); }
+  .rvlist, .rvstats, .rvexport { top: 0; left: auto; width: min(420px, 70%); border-radius: 20px 0 0 20px; transform: translateX(104%); }
 }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); flex: 0 0 auto; }
 .stat { background: var(--surface); padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
@@ -530,6 +534,15 @@ input.txt.code { width: 9ch; text-transform: uppercase; letter-spacing: 3px; fon
 @keyframes statsIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 #confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
 @media (max-width: 420px) { .gobadge { width: 56px; height: 56px; font-size: 25px; } .gohead { gap: 12px; } }
+
+/* export sheet */
+.exp { padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5; }
+.exp .lead { margin: 0; }
+.exp h3 { margin: 6px 0 -4px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.expbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.exphow { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.exp .muted { color: var(--muted); margin: 0; }
+.exptext { width: 100%; box-sizing: border-box; min-height: 180px; resize: vertical; font: 11.5px/1.45 var(--font-num); background: var(--surface); color: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 10px; white-space: pre; }
 
 </style>
 </head><body>
@@ -967,16 +980,50 @@ function checkerSVG(id, p, humanLight, x, y, inTray) {
   </g>`;
 }
 
+// opts.dim: [left, right] halves shown as spent (a used die is both); opts.fresh: halves that have
+// just been spent, which fade down rather than snapping.
+let dieUid = 0;
 function dieSVG(cx, cy, v, col, opts = {}) {
-  const sz = opts.size || 52, r = 11 * sz / 52;
-  const op = opts.used ? .32 : 1;
-  let s = `<g class="die" transform="translate(${cx},${cy})${opts.rot ? ` rotate(${opts.rot})` : ''}${opts.sc && opts.sc !== 1 ? ` scale(${opts.sc})` : ''}" opacity="${op}">`;
-  s += `<rect x="${-sz / 2}" y="${-sz / 2}" width="${sz}" height="${sz}" rx="${r}" fill="${col.face}" stroke="${col.edge}" stroke-width="1.2" filter="url(#fShadow)"/>`;
-  s += `<rect x="${-sz / 2 + 2.2}" y="${-sz / 2 + 2.2}" width="${sz - 4.4}" height="${sz - 4.4}" rx="${r - 2}" fill="none" stroke="${col.hi}" stroke-width="1.2"/>`;
-  const k = sz / 52;
-  for (const [dx, dy] of pipDots(v)) s += `<circle cx="${dx * k}" cy="${dy * k}" r="${4.7 * k}" fill="${col.pip}"/>`;
-  s += `</g>`;
-  return s;
+  const sz = opts.size || 52, r = 11 * sz / 52, k = sz / 52;
+  const dim = opts.dim || (opts.used ? [true, true] : [false, false]);
+  const fresh = opts.fresh || [false, false];
+  let body = `<rect x="${-sz / 2}" y="${-sz / 2}" width="${sz}" height="${sz}" rx="${r}" fill="${col.face}" stroke="${col.edge}" stroke-width="1.2" filter="url(#fShadow)"/>`;
+  body += `<rect x="${-sz / 2 + 2.2}" y="${-sz / 2 + 2.2}" width="${sz - 4.4}" height="${sz - 4.4}" rx="${r - 2}" fill="none" stroke="${col.hi}" stroke-width="1.2"/>`;
+  for (const [dx, dy] of pipDots(v)) body += `<circle cx="${dx * k}" cy="${dy * k}" r="${4.7 * k}" fill="${col.pip}"/>`;
+  const open = `<g class="die" transform="translate(${cx},${cy})${opts.rot ? ` rotate(${opts.rot})` : ''}${opts.sc && opts.sc !== 1 ? ` scale(${opts.sc})` : ''}"`;
+  if (!dim[0] && !dim[1]) return open + `>${body}</g>`;
+  if (dim[0] && dim[1] && !fresh[0] && !fresh[1]) return open + ` opacity=".32">${body}</g>`;
+  // part spent: the spent die underneath, the live half (and any half fading out) on top, clipped
+  const id = 'dh' + (++dieUid), e = sz / 2 + 4;
+  let s = open + `><defs><clipPath id="${id}l"><rect x="${-e}" y="${-e}" width="${e}" height="${2 * e}"/></clipPath><clipPath id="${id}r"><rect x="0" y="${-e}" width="${e}" height="${2 * e}"/></clipPath></defs>`;
+  s += `<g opacity=".32">${body}</g>`;
+  ['l', 'r'].forEach((h, i) => {
+    if (!dim[i]) s += `<g clip-path="url(#${id}${h})">${body}</g>`;
+    else if (fresh[i]) s += `<g class="spend" clip-path="url(#${id}${h})">${body}</g>`;
+  });
+  if (dim[0] !== dim[1]) s += `<line x1="0" y1="${-sz / 2 + 3}" x2="0" y2="${sz / 2 - 3}" stroke="${col.edge}" stroke-opacity=".35" stroke-width="1"/>`;
+  return s + `</g>`;
+}
+// Which halves of each shown die are spent. Doubles: one half per move played, the first die first,
+// so after all four both dice are dark. Otherwise each die is spent whole.
+function diceHalves(st) {
+  if (st.vals.length === 4) {
+    const n = st.used.filter(Boolean).length;
+    return [[n >= 1, n >= 2], [n >= 3, n >= 4]];
+  }
+  const ord = st.order || [0, 1];
+  return ord.map(i => [!!st.used[i], !!st.used[i]]);
+}
+// remembers what was last drawn, so a half that has just been spent can fade down
+function halvesTracker() {
+  let lastKey = '', last = null;
+  return (st) => {
+    const h = diceHalves(st);
+    const key = st.p + ':' + st.vals.join('') + ':' + (st.order || [0, 1]).join('');
+    const fresh = h.map((d, i) => d.map((x, j) => x && key === lastKey && last && !last[i][j]));
+    lastKey = key; last = h;
+    return { h, fresh };
+  };
 }
 
 function cubeSVG(x, y, value, size = 46) {
@@ -1368,6 +1415,7 @@ function createBoard(svg, cb) {
 
   /* ---- dice ---- */
   let diceState = null; // {p, vals, used:[bool], order:[i,j]}
+  const boardHalves = halvesTracker();
   // pose (while the dice are in the air): per die {dx, dy, rot, sc, v}, keyed by position (or by player for the opening roll)
   function drawDice(st, pose) {
     diceState = st;
@@ -1389,21 +1437,18 @@ function createBoard(svg, cb) {
       }
       layers.dice.innerHTML = s; return;
     }
+    const { h, fresh } = pose ? { h: [[false, false], [false, false]], fresh: [[false, false], [false, false]] } : boardHalves(st);
     if (vals.length === 4) {
-      // doubles: show two dice, with small used markers
-      const usedN = st.used.filter(Boolean).length;
-      s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice">`;
+      // doubles: two dice, and each move played darkens half a die
+      s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice, ${4 - st.used.filter(Boolean).length} of 4 moves left">`;
       const a = at(offs(c, -gap), 0), b2 = at(offs(c, gap), 1);
-      s += dieSVG(a.x, a.y, P(0).v || vals[0], col, { used: usedN >= 4, rot: P(0).rot, sc: P(0).sc, size: DS });
-      s += dieSVG(b2.x, b2.y, P(1).v || vals[0], col, { rot: P(1).rot, sc: P(1).sc, size: DS });
-      // markers under the dice showing how many moves are left
-      const mk = DS / 52;
-      if (!pose) for (let k = 0; k < 4; k++) { const q = offs(c, (-27 + k * 18) * mk, 44 * mk); s += `<circle cx="${q.x}" cy="${q.y}" r="${4.5 * mk}" fill="${k < 4 - usedN ? '#f2b84b' : 'rgba(255,255,255,.18)'}"/>`; }
+      s += dieSVG(a.x, a.y, P(0).v || vals[0], col, { dim: h[0], fresh: fresh[0], rot: P(0).rot, sc: P(0).sc, size: DS });
+      s += dieSVG(b2.x, b2.y, P(1).v || vals[0], col, { dim: h[1], fresh: fresh[1], rot: P(1).rot, sc: P(1).sc, size: DS });
       s += `</g>`;
     } else {
       const ord = st.order || [0, 1];
       s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice, tap to swap order">`;
-      ord.forEach((vi, pos) => { const q = at(offs(c, pos === 0 ? -gap : gap), pos); s += dieSVG(q.x, q.y, P(pos).v || vals[vi], col, { used: st.used[vi], rot: P(pos).rot, sc: P(pos).sc, size: DS }); });
+      ord.forEach((vi, pos) => { const q = at(offs(c, pos === 0 ? -gap : gap), pos); s += dieSVG(q.x, q.y, P(pos).v || vals[vi], col, { dim: h[pos], fresh: fresh[pos], rot: P(pos).rot, sc: P(pos).sc, size: DS }); });
       s += `</g>`;
     }
     layers.dice.innerHTML = s;
@@ -3389,6 +3434,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const ICON = {
   menu: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>',
   chart: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  share: '<svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   flag: '<svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>',
@@ -4082,11 +4128,25 @@ const UI = (() => {
   }
   /* ---------- portrait control bar: big buttons and dice under the board ---------- */
   const bar = { btns: [], dice: null };
-  function miniDie(v, used) {
+  // dim / fresh: [left, right] halves spent / just spent (see diceHalves)
+  function miniDie(v, dim, fresh) {
     const light = Settings.humanLight;
+    dim = dim || [false, false]; fresh = fresh || [false, false];
     const P = pipDots(v).map(([x, y]) => `<circle cx="${26 + x}" cy="${26 + y}" r="4.8" fill="${light ? '#1a1d21' : '#f2efe9'}"/>`).join('');
-    return `<svg viewBox="0 0 52 52" width="48" height="48" style="opacity:${used ? .3 : 1}"><rect x="1" y="1" width="50" height="50" rx="11" fill="${light ? 'url(#gDieL) #f7f4ee' : 'url(#gDieD) #24282d'}" stroke="${light ? '#c4bcae' : '#111316'}" stroke-width="1.4"/><rect x="3.4" y="3.4" width="45.2" height="45.2" rx="9" fill="none" stroke="${light ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.13)'}" stroke-width="1.2"/>${P}</svg>`;
+    const body = `<rect x="1" y="1" width="50" height="50" rx="11" fill="${light ? 'url(#gDieL) #f7f4ee' : 'url(#gDieD) #24282d'}" stroke="${light ? '#c4bcae' : '#111316'}" stroke-width="1.4"/><rect x="3.4" y="3.4" width="45.2" height="45.2" rx="9" fill="none" stroke="${light ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.13)'}" stroke-width="1.2"/>${P}`;
+    const svg = (inner, op) => `<svg viewBox="0 0 52 52" width="48" height="48"${op ? ` style="opacity:${op}"` : ''}>${inner}</svg>`;
+    if (!dim[0] && !dim[1]) return svg(body);
+    if (dim[0] && dim[1] && !fresh[0] && !fresh[1]) return svg(body, .3);
+    const id = 'mh' + (++dieUid);
+    let s = `<defs><clipPath id="${id}l"><rect x="0" y="0" width="26" height="52"/></clipPath><clipPath id="${id}r"><rect x="26" y="0" width="26" height="52"/></clipPath></defs><g opacity=".3">${body}</g>`;
+    ['l', 'r'].forEach((h, i) => {
+      if (!dim[i]) s += `<g clip-path="url(#${id}${h})">${body}</g>`;
+      else if (fresh[i]) s += `<g class="spend" clip-path="url(#${id}${h})">${body}</g>`;
+    });
+    if (dim[0] !== dim[1]) s += `<line x1="26" y1="4" x2="26" y2="48" stroke="${light ? '#c4bcae' : '#111316'}" stroke-opacity=".5" stroke-width="1"/>`;
+    return svg(s);
   }
+  const barHalves = halvesTracker();
   function renderBar() {
     const el = $('#actbar');
     const portrait = document.getElementById('app').classList.contains('portrait');
@@ -4097,17 +4157,17 @@ const UI = (() => {
     if (dice) {
       const dbl = dice.vals.length === 4;
       const ord = dbl ? [0, 1] : (dice.order || [0, 1]);
-      const used = dice.rolling ? [false, false] : dbl ? [dice.used.filter(Boolean).length >= 4, false] : ord.map(i => dice.used[i]);
+      const hv = dice.rolling ? { h: [[false, false], [false, false]], fresh: [[false, false], [false, false]] } : barHalves(dice);
       const face = (k) => (dice.rolling && dice.faces && dice.faces[k]) || dice.vals[dbl ? 0 : ord[k]];
       // mid-throw: only the faces change, so the tumble isn't restarted
       const live = dice.rolling && el.querySelector('.dicebtn.rolling');
-      if (live) { live.querySelectorAll('.d').forEach((d, k) => { d.innerHTML = miniDie(face(k), false); }); return; }
+      if (live) { live.querySelectorAll('.d').forEach((d, k) => { d.innerHTML = miniDie(face(k)); }); return; }
       const now = performance.now();
       if (!dice.rolling && bar.wasRolling) bar.landAt = now;
       bar.wasRolling = !!dice.rolling;
       const landing = !dice.rolling && bar.landAt && now - bar.landAt < 420;
       const delay = (k) => landing ? ` style="animation-delay:${Math.round(k * 50 - (now - bar.landAt))}ms"` : '';
-      mid = `<button type="button" class="dicebtn${dice.rolling ? ' rolling' : landing ? ' landed' : ''}" data-b="dice" aria-label="Dice: tap to swap which is played first, or to confirm">${[0, 1].map(k => `<span class="d"${delay(k)}>${miniDie(face(k), used[k])}</span>`).join('')}</button>`;
+      mid = `<button type="button" class="dicebtn${dice.rolling ? ' rolling' : landing ? ' landed' : ''}" data-b="dice" aria-label="Dice: tap to swap which is played first, or to confirm">${[0, 1].map(k => `<span class="d"${delay(k)}>${miniDie(face(k), hv.h[k], hv.fresh[k])}</span>`).join('')}</button>`;
     } else bar.wasRolling = false;
     const had = bar.shown || new Set();
     const btn = (b) => `<button type="button" class="btnx ${b.kind === 'primary' ? 'primary' : b.kind === 'accent' ? 'accent' : ''}${had.has(b.id) ? '' : ' in'}" data-b="${b.id}" aria-label="${esc(b.aria || b.label)}">${esc(b.label)}</button>`;
@@ -4120,6 +4180,76 @@ const UI = (() => {
   }
   return { init, toast, update, showSetup, closeCard, renderBar, placeMenu };
 })();
+
+/* ===================== MATCH EXPORT ===================== */
+// Writes a match in the Jellyfish ".mat" text format, which GNU Backgammon, eXtreme Gammon,
+// BGBlitz and most other analysers import. Player 0 (you) is the left column, player 1 the right.
+const MatExport = (() => {
+  const pt = (i) => i === 24 ? 25 : i < 0 ? 0 : i + 1;   // own-perspective index -> point number (bar 25, off 0)
+  const pad = (s, n) => s.length >= n ? s + ' ' : s + ' '.repeat(n - s.length);
+  const clean = (s) => String(s || '').replace(/[:\r\n]/g, ' ').trim().slice(0, 24) || 'Player';
+
+  function moveText(r) {
+    const d = r.dice.slice().sort((a, b) => b - a).join('');
+    if (r.forcedNone || !r.subs || !r.subs.length) return d + ':';
+    return d + ': ' + r.subs.map(s => pt(s.from) + '/' + pt(s.to) + (s.hit ? '*' : '')).join(' ');
+  }
+  // one game's decisions as cells [{side, text}]
+  function cells(g) {
+    const out = [];
+    for (const r of g.recs || []) {
+      if (r.k === 'move' && r.dice) out.push({ side: r.p, text: moveText(r) });
+      else if (r.k === 'cube' && r.action === 'double') out.push({ side: r.p, text: ' Doubles => ' + (r.ctx && r.ctx.cube ? r.ctx.cube * 2 : 2) });
+      else if (r.k === 'take') out.push({ side: r.p, text: r.action === 'take' ? ' Takes' : ' Drops' });
+    }
+    return out;
+  }
+  function gameText(g, i, M, names) {
+    const s = g.startScore || [0, 0];
+    const L = [];
+    L.push(' Game ' + (i + 1));
+    L.push(' ' + pad(names[0] + ' : ' + s[0], 31) + names[1] + ' : ' + s[1]);
+    // lay the cells into numbered rows, left then right, leaving a gap if a side is skipped
+    const slots = [];
+    for (const c of cells(g)) {
+      if (slots.length % 2 !== c.side) slots.push('');
+      slots.push(c.text);
+    }
+    for (let k = 0; k < slots.length; k += 2) {
+      const n = String(k / 2 + 1).padStart(3, ' ') + ') ';
+      L.push(n + pad(slots[k], 28) + (slots[k + 1] || ''));
+    }
+    if (g.result) {
+      const p = g.result.points;
+      const last = M.over && i === M.games.length - 1 && M.matchTo;
+      const t = 'Wins ' + p + ' point' + (p === 1 ? '' : 's') + (last ? ' and the match' : '');
+      L.push((g.result.winner === 0 ? '      ' : ' '.repeat(33)) + t);
+    }
+    return L.join('\n');
+  }
+  function toMat(M, names) {
+    names = (names || ['You', 'Bot']).map(clean);
+    if (names[0] === names[1]) names[1] += ' 2';
+    const d = new Date(M.created || Date.now());
+    const head = [
+      '; [Site "Prime Backgammon"]',
+      '; [Player 1 "' + names[0] + '"]',
+      '; [Player 2 "' + names[1] + '"]',
+      '; [EventDate "' + d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0') + '"]',
+      '',
+      ' ' + (M.matchTo || 0) + ' point match',
+      ''
+    ];
+    return head.join('\n') + '\n' + M.games.map((g, i) => gameText(g, i, M, names)).join('\n\n') + '\n';
+  }
+  function fileName(M, names) {
+    const d = new Date(M.created || Date.now());
+    const stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0');
+    return ('prime-' + clean(names[1]) + '-' + stamp).toLowerCase().replace(/[^a-z0-9-]+/g, '-') + '.mat';
+  }
+  return { toMat, fileName };
+})();
+
 
 /* ===================== REVIEW ===================== */
 // Layout: a slim header (back, which games, stats) and one row of filters (whose / which);
@@ -4196,6 +4326,7 @@ const Review = (() => {
         <div class="seg sm who" id="fWho" role="group" aria-label="Whose decisions">${w.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${who === v}">${esc(l)}</button>`).join('')}</div>
         <div class="bands" id="fBand" role="group" aria-label="Which decisions">${f.map(([v, l]) => `<button type="button" class="b-${v}" data-v="${v}" aria-pressed="${filt === v}"><span class="n">${c[v]}</span><span class="l">${l}</span></button>`).join('')}</div>
         <button class="iconbtn labelled" id="rvStatsBtn" type="button" aria-label="Match stats">${ICON.chart}<span class="lt">Stats</span></button>
+        <button class="iconbtn labelled" id="rvExportBtn" type="button" aria-label="Export the match for other analysers">${ICON.share}<span class="lt">Export</span></button>
     </header>`;
   }
 
@@ -4347,6 +4478,53 @@ const Review = (() => {
       <p class="muted small">PR is the average equity lost per decision × 500 (lower is better). Bands: doubtful 0.04, error 0.08, blunder 0.16.</p>`;
   }
 
+  /* ---------- export ---------- */
+  const expNames = () => ['You', pname(1)];
+  const matText = () => MatExport.toMat(M, expNames());
+  function exportHTML() {
+    const n = M.games.length, unfinished = M.games.some(g => !g.result);
+    return `<div class="exp">
+      <p class="lead">Save ${M.matchTo ? 'this ' + M.matchTo + '-point match' : 'this game'} (${n} game${n === 1 ? '' : 's'}) as a <b>.mat</b> file, the standard format other backgammon programs read.${unfinished ? ' The game still in progress is included up to the last move.' : ''}</p>
+      <div class="expbtns">
+        <button class="btnx primary" id="expDl" type="button">Download .mat</button>
+        <button class="btnx" id="expCopy" type="button">Copy text</button>
+        ${navigator.share ? '<button class="btnx" id="expShare" type="button">Share…</button>' : ''}
+      </div>
+      <h3>Open it in</h3>
+      <ol class="exphow">
+        <li><b>GNU Backgammon</b> (free, Windows / Mac / Linux, gnubg.org): <i>File → Import</i>, choose the file, then <i>Analyse → Analyse match</i>. Set <i>Settings → Analysis</i> to <i>Grandmaster</i> or <i>4-ply</i> for a stronger check than the bot itself.</li>
+        <li><b>eXtreme Gammon</b> (XG, paid, widely seen as the strongest): <i>File → Import</i>, then <i>Analyze</i>, with XG Roller for the deepest check.</li>
+        <li><b>BGBlitz</b> also imports .mat files.</li>
+      </ol>
+      <p class="small muted">If Download does nothing (some embedded pages block it), use Copy text, paste it into a plain text file and save it with a .mat ending.</p>
+      <textarea class="exptext" id="expText" readonly spellcheck="false" aria-label="The match as .mat text">${esc(matText())}</textarea>
+    </div>`;
+  }
+  function wireExport() {
+    const dl = $('#expDl'), cp = $('#expCopy'), sh = $('#expShare');
+    const name = MatExport.fileName(M, expNames());
+    if (dl) dl.onclick = () => {
+      try {
+        const url = URL.createObjectURL(new Blob([matText()], { type: 'text/plain' }));
+        const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        UI.toast('Saved ' + name);
+      } catch (e) { UI.toast('Download blocked here: use Copy text'); }
+    };
+    if (cp) cp.onclick = async () => {
+      try { await navigator.clipboard.writeText(matText()); UI.toast('Copied: paste into a .mat file'); }
+      catch (e) { const t = $('#expText'); t.focus(); t.select(); UI.toast('Select all and copy'); }
+    };
+    if (sh) sh.onclick = async () => {
+      const text = matText();
+      try {
+        const file = new File([text], name, { type: 'text/plain' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: name });
+        else await navigator.share({ title: name, text });
+      } catch (e) { if (e && e.name !== 'AbortError') UI.toast('Sharing failed: use Copy text'); }
+    };
+  }
+
   /* ---------- render ---------- */
   function render(keepScroll) {
     const el = $('#review');
@@ -4365,6 +4543,10 @@ const Review = (() => {
       <aside class="rvstats" id="rvStatsWrap" aria-label="Stats">
         <div class="sheet-h"><b>Stats</b><button class="iconbtn" data-close type="button" aria-label="Close">${ICON.close}</button></div>
         <div class="sheet-b" id="rvStatsBody">${statsHTML()}</div>
+      </aside>
+      <aside class="rvexport" id="rvExportWrap" aria-label="Export">
+        <div class="sheet-h"><b>Export match</b><button class="iconbtn" data-close type="button" aria-label="Close">${ICON.close}</button></div>
+        <div class="sheet-b" id="rvExportBody">${exportHTML()}</div>
       </aside>
       <div class="rvscrim" id="rvScrim"></div>`;
     el.dataset.sheet = sheet || '';
@@ -4398,6 +4580,8 @@ const Review = (() => {
     $('#fBand').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; filt = b.dataset.v; ensureSel(); render(); };
     $('#fWho').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; who = b.dataset.v; ensureSel(); render(); };
     $('#rvStatsBtn').onclick = () => openSheet(sheet === 'stats' ? null : 'stats');
+    $('#rvExportBtn').onclick = () => openSheet(sheet === 'export' ? null : 'export');
+    wireExport();
     $('#rvScrim').onclick = () => openSheet(null);
     el.querySelectorAll('[data-close]').forEach(x => x.onclick = () => openSheet(null));
     $('#rvList').onclick = (e) => { const b = e.target.closest('.mrow'); if (!b) return; select(+b.dataset.i); if (sheet === 'list') openSheet(null); };

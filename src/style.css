@@ -116,6 +116,10 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 #board .btn .bi.in { animation: btnIn .26s var(--spring) backwards; }
 @keyframes btnIn { from { transform: scale(.82); opacity: 0; } to { transform: none; opacity: 1; } }
 #board .die { transition: opacity .2s; }
+/* half (or all) of a die being spent: the bright copy sinks away over the dimmed one */
+.spend { animation: spend .34s cubic-bezier(.3,.7,.4,1) forwards; }
+@keyframes spend { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .spend { animation: none; opacity: 0; } }
 #board .dst { animation: dstIn .16s ease-out backwards; }
 #board .dst .spot { animation: spot 1.1s ease-in-out infinite; }
 #board .dst.hot .glow, #board rect.dst.hot { fill: rgba(242, 184, 75, .42); }
@@ -277,7 +281,7 @@ select.sel { appearance: none; background: var(--bg); border: 0; border-radius: 
 .rvh h1 { font-family: var(--font-display); font-weight: 400; font-size: 22px; margin: 0; }
 .rvh .spacer { flex: 1 1 0; order: 7; }
 .rvh .loading { gap: 6px; font-size: 12.5px; }
-.rvh .who { order: 5; } .rvh .bands { order: 6; } .rvh #rvStatsBtn { order: 8; }
+.rvh .who { order: 5; } .rvh .bands { order: 6; } .rvh #rvStatsBtn { order: 8; } .rvh #rvExportBtn { order: 8; }
 select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-width: 0; max-width: 150px; }
 .seg.sm { flex-wrap: nowrap; flex: 0 0 auto; }
 .seg.sm button { flex: 0 0 auto; min-height: 36px; padding: 6px 12px; font-size: 13px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
@@ -354,15 +358,15 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 .small { font-size: 12px; line-height: 1.5; }
 
 /* the move list and the stats slide up as sheets */
-.rvlist, .rvstats { position: fixed; left: 0; right: 0; bottom: 0; top: 16%; z-index: 17; background: var(--surface-2); border-radius: 20px 20px 0 0; box-shadow: var(--shadow);
+.rvlist, .rvstats, .rvexport { position: fixed; left: 0; right: 0; bottom: 0; top: 16%; z-index: 17; background: var(--surface-2); border-radius: 20px 20px 0 0; box-shadow: var(--shadow);
   display: flex; flex-direction: column; transform: translateY(104%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s; }
-.review[data-sheet="list"] .rvlist, .review[data-sheet="stats"] .rvstats { transform: none; visibility: visible; transition: transform .22s ease; }
+.review[data-sheet="list"] .rvlist, .review[data-sheet="stats"] .rvstats, .review[data-sheet="export"] .rvexport { transform: none; visibility: visible; transition: transform .22s ease; }
 .rvscrim { position: fixed; inset: 0; z-index: 16; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .2s; }
-.review[data-sheet="list"] .rvscrim, .review[data-sheet="stats"] .rvscrim { opacity: 1; pointer-events: auto; }
+.review[data-sheet="list"] .rvscrim, .review[data-sheet="stats"] .rvscrim, .review[data-sheet="export"] .rvscrim { opacity: 1; pointer-events: auto; }
 .sheet-h { display: flex; justify-content: space-between; align-items: center; padding: 10px 10px 6px 18px; font-size: 17px; flex: 0 0 auto; }
 .sheet-b { flex: 1 1 auto; overflow: auto; min-height: 0; overscroll-behavior: contain; padding: 0 10px max(14px, env(safe-area-inset-bottom, 0px)); }
 @media (min-width: 700px) {
-  .rvlist, .rvstats { top: 0; left: auto; width: 420px; border-radius: 20px 0 0 20px; transform: translateX(104%); }
+  .rvlist, .rvstats, .rvexport { top: 0; left: auto; width: 420px; border-radius: 20px 0 0 20px; transform: translateX(104%); }
 }
 /* move list rows */
 .mrow { display: grid; grid-template-columns: 26px 12px 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 8px; border-radius: 10px; cursor: pointer; border: 0; background: transparent; width: 100%; text-align: left; font-size: 14px; color: inherit; }
@@ -416,7 +420,7 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
   .rv-main { gap: 6px; padding-top: 6px; }
   .dcard { padding: 8px 10px; gap: 3px; }
   .navbtn { height: 38px; }
-  .rvlist, .rvstats { top: 0; left: auto; width: min(420px, 70%); border-radius: 20px 0 0 20px; transform: translateX(104%); }
+  .rvlist, .rvstats, .rvexport { top: 0; left: auto; width: min(420px, 70%); border-radius: 20px 0 0 20px; transform: translateX(104%); }
 }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); flex: 0 0 auto; }
 .stat { background: var(--surface); padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
@@ -524,3 +528,12 @@ input.txt.code { width: 9ch; text-transform: uppercase; letter-spacing: 3px; fon
 @keyframes statsIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 #confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
 @media (max-width: 420px) { .gobadge { width: 56px; height: 56px; font-size: 25px; } .gohead { gap: 12px; } }
+
+/* export sheet */
+.exp { padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5; }
+.exp .lead { margin: 0; }
+.exp h3 { margin: 6px 0 -4px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.expbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.exphow { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.exp .muted { color: var(--muted); margin: 0; }
+.exptext { width: 100%; box-sizing: border-box; min-height: 180px; resize: vertical; font: 11.5px/1.45 var(--font-num); background: var(--surface); color: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 10px; white-space: pre; }

@@ -8,8 +8,8 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(root)
 shell = open('src/shell.html').read()
 css = open('src/style.css').read()
-js = '\n'.join(open('src/' + f).read() for f in ['rules.js', 'board.js', 'net.js', 'game.js', 'ui.js', 'review.js'])
-js = js.replace("if (typeof module !== 'undefined') module.exports = { R };", '')
+js = '\n'.join(open('src/' + f).read() for f in ['rules.js', 'board.js', 'net.js', 'game.js', 'ui.js', 'matexport.js', 'review.js'])
+js = js.replace("if (typeof module !== 'undefined') module.exports = { R };", '').replace("if (typeof module !== 'undefined') module.exports = { MatExport };", '')
 body = shell.replace('/*STYLE*/', css).replace('/*SCRIPT*/', js)
 head = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'

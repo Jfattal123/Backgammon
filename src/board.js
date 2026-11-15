@@ -214,16 +214,50 @@ function checkerSVG(id, p, humanLight, x, y, inTray) {
   </g>`;
 }
 
+// opts.dim: [left, right] halves shown as spent (a used die is both); opts.fresh: halves that have
+// just been spent, which fade down rather than snapping.
+let dieUid = 0;
 function dieSVG(cx, cy, v, col, opts = {}) {
-  const sz = opts.size || 52, r = 11 * sz / 52;
-  const op = opts.used ? .32 : 1;
-  let s = `<g class="die" transform="translate(${cx},${cy})${opts.rot ? ` rotate(${opts.rot})` : ''}${opts.sc && opts.sc !== 1 ? ` scale(${opts.sc})` : ''}" opacity="${op}">`;
-  s += `<rect x="${-sz / 2}" y="${-sz / 2}" width="${sz}" height="${sz}" rx="${r}" fill="${col.face}" stroke="${col.edge}" stroke-width="1.2" filter="url(#fShadow)"/>`;
-  s += `<rect x="${-sz / 2 + 2.2}" y="${-sz / 2 + 2.2}" width="${sz - 4.4}" height="${sz - 4.4}" rx="${r - 2}" fill="none" stroke="${col.hi}" stroke-width="1.2"/>`;
-  const k = sz / 52;
-  for (const [dx, dy] of pipDots(v)) s += `<circle cx="${dx * k}" cy="${dy * k}" r="${4.7 * k}" fill="${col.pip}"/>`;
-  s += `</g>`;
-  return s;
+  const sz = opts.size || 52, r = 11 * sz / 52, k = sz / 52;
+  const dim = opts.dim || (opts.used ? [true, true] : [false, false]);
+  const fresh = opts.fresh || [false, false];
+  let body = `<rect x="${-sz / 2}" y="${-sz / 2}" width="${sz}" height="${sz}" rx="${r}" fill="${col.face}" stroke="${col.edge}" stroke-width="1.2" filter="url(#fShadow)"/>`;
+  body += `<rect x="${-sz / 2 + 2.2}" y="${-sz / 2 + 2.2}" width="${sz - 4.4}" height="${sz - 4.4}" rx="${r - 2}" fill="none" stroke="${col.hi}" stroke-width="1.2"/>`;
+  for (const [dx, dy] of pipDots(v)) body += `<circle cx="${dx * k}" cy="${dy * k}" r="${4.7 * k}" fill="${col.pip}"/>`;
+  const open = `<g class="die" transform="translate(${cx},${cy})${opts.rot ? ` rotate(${opts.rot})` : ''}${opts.sc && opts.sc !== 1 ? ` scale(${opts.sc})` : ''}"`;
+  if (!dim[0] && !dim[1]) return open + `>${body}</g>`;
+  if (dim[0] && dim[1] && !fresh[0] && !fresh[1]) return open + ` opacity=".32">${body}</g>`;
+  // part spent: the spent die underneath, the live half (and any half fading out) on top, clipped
+  const id = 'dh' + (++dieUid), e = sz / 2 + 4;
+  let s = open + `><defs><clipPath id="${id}l"><rect x="${-e}" y="${-e}" width="${e}" height="${2 * e}"/></clipPath><clipPath id="${id}r"><rect x="0" y="${-e}" width="${e}" height="${2 * e}"/></clipPath></defs>`;
+  s += `<g opacity=".32">${body}</g>`;
+  ['l', 'r'].forEach((h, i) => {
+    if (!dim[i]) s += `<g clip-path="url(#${id}${h})">${body}</g>`;
+    else if (fresh[i]) s += `<g class="spend" clip-path="url(#${id}${h})">${body}</g>`;
+  });
+  if (dim[0] !== dim[1]) s += `<line x1="0" y1="${-sz / 2 + 3}" x2="0" y2="${sz / 2 - 3}" stroke="${col.edge}" stroke-opacity=".35" stroke-width="1"/>`;
+  return s + `</g>`;
+}
+// Which halves of each shown die are spent. Doubles: one half per move played, the first die first,
+// so after all four both dice are dark. Otherwise each die is spent whole.
+function diceHalves(st) {
+  if (st.vals.length === 4) {
+    const n = st.used.filter(Boolean).length;
+    return [[n >= 1, n >= 2], [n >= 3, n >= 4]];
+  }
+  const ord = st.order || [0, 1];
+  return ord.map(i => [!!st.used[i], !!st.used[i]]);
+}
+// remembers what was last drawn, so a half that has just been spent can fade down
+function halvesTracker() {
+  let lastKey = '', last = null;
+  return (st) => {
+    const h = diceHalves(st);
+    const key = st.p + ':' + st.vals.join('') + ':' + (st.order || [0, 1]).join('');
+    const fresh = h.map((d, i) => d.map((x, j) => x && key === lastKey && last && !last[i][j]));
+    lastKey = key; last = h;
+    return { h, fresh };
+  };
 }
 
 function cubeSVG(x, y, value, size = 46) {
@@ -615,6 +649,7 @@ function createBoard(svg, cb) {
 
   /* ---- dice ---- */
   let diceState = null; // {p, vals, used:[bool], order:[i,j]}
+  const boardHalves = halvesTracker();
   // pose (while the dice are in the air): per die {dx, dy, rot, sc, v}, keyed by position (or by player for the opening roll)
   function drawDice(st, pose) {
     diceState = st;
@@ -636,21 +671,18 @@ function createBoard(svg, cb) {
       }
       layers.dice.innerHTML = s; return;
     }
+    const { h, fresh } = pose ? { h: [[false, false], [false, false]], fresh: [[false, false], [false, false]] } : boardHalves(st);
     if (vals.length === 4) {
-      // doubles: show two dice, with small used markers
-      const usedN = st.used.filter(Boolean).length;
-      s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice">`;
+      // doubles: two dice, and each move played darkens half a die
+      s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice, ${4 - st.used.filter(Boolean).length} of 4 moves left">`;
       const a = at(offs(c, -gap), 0), b2 = at(offs(c, gap), 1);
-      s += dieSVG(a.x, a.y, P(0).v || vals[0], col, { used: usedN >= 4, rot: P(0).rot, sc: P(0).sc, size: DS });
-      s += dieSVG(b2.x, b2.y, P(1).v || vals[0], col, { rot: P(1).rot, sc: P(1).sc, size: DS });
-      // markers under the dice showing how many moves are left
-      const mk = DS / 52;
-      if (!pose) for (let k = 0; k < 4; k++) { const q = offs(c, (-27 + k * 18) * mk, 44 * mk); s += `<circle cx="${q.x}" cy="${q.y}" r="${4.5 * mk}" fill="${k < 4 - usedN ? '#f2b84b' : 'rgba(255,255,255,.18)'}"/>`; }
+      s += dieSVG(a.x, a.y, P(0).v || vals[0], col, { dim: h[0], fresh: fresh[0], rot: P(0).rot, sc: P(0).sc, size: DS });
+      s += dieSVG(b2.x, b2.y, P(1).v || vals[0], col, { dim: h[1], fresh: fresh[1], rot: P(1).rot, sc: P(1).sc, size: DS });
       s += `</g>`;
     } else {
       const ord = st.order || [0, 1];
       s += `<g class="btn" data-btn="dice" role="button" aria-label="Dice, tap to swap order">`;
-      ord.forEach((vi, pos) => { const q = at(offs(c, pos === 0 ? -gap : gap), pos); s += dieSVG(q.x, q.y, P(pos).v || vals[vi], col, { used: st.used[vi], rot: P(pos).rot, sc: P(pos).sc, size: DS }); });
+      ord.forEach((vi, pos) => { const q = at(offs(c, pos === 0 ? -gap : gap), pos); s += dieSVG(q.x, q.y, P(pos).v || vals[vi], col, { dim: h[pos], fresh: fresh[pos], rot: P(pos).rot, sc: P(pos).sc, size: DS }); });
       s += `</g>`;
     }
     layers.dice.innerHTML = s;

@@ -73,6 +73,7 @@ const Review = (() => {
         <div class="seg sm who" id="fWho" role="group" aria-label="Whose decisions">${w.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${who === v}">${esc(l)}</button>`).join('')}</div>
         <div class="bands" id="fBand" role="group" aria-label="Which decisions">${f.map(([v, l]) => `<button type="button" class="b-${v}" data-v="${v}" aria-pressed="${filt === v}"><span class="n">${c[v]}</span><span class="l">${l}</span></button>`).join('')}</div>
         <button class="iconbtn labelled" id="rvStatsBtn" type="button" aria-label="Match stats">${ICON.chart}<span class="lt">Stats</span></button>
+        <button class="iconbtn labelled" id="rvExportBtn" type="button" aria-label="Export the match for other analysers">${ICON.share}<span class="lt">Export</span></button>
     </header>`;
   }
 
@@ -224,6 +225,53 @@ const Review = (() => {
       <p class="muted small">PR is the average equity lost per decision × 500 (lower is better). Bands: doubtful 0.04, error 0.08, blunder 0.16.</p>`;
   }
 
+  /* ---------- export ---------- */
+  const expNames = () => ['You', pname(1)];
+  const matText = () => MatExport.toMat(M, expNames());
+  function exportHTML() {
+    const n = M.games.length, unfinished = M.games.some(g => !g.result);
+    return `<div class="exp">
+      <p class="lead">Save ${M.matchTo ? 'this ' + M.matchTo + '-point match' : 'this game'} (${n} game${n === 1 ? '' : 's'}) as a <b>.mat</b> file, the standard format other backgammon programs read.${unfinished ? ' The game still in progress is included up to the last move.' : ''}</p>
+      <div class="expbtns">
+        <button class="btnx primary" id="expDl" type="button">Download .mat</button>
+        <button class="btnx" id="expCopy" type="button">Copy text</button>
+        ${navigator.share ? '<button class="btnx" id="expShare" type="button">Share…</button>' : ''}
+      </div>
+      <h3>Open it in</h3>
+      <ol class="exphow">
+        <li><b>GNU Backgammon</b> (free, Windows / Mac / Linux, gnubg.org): <i>File → Import</i>, choose the file, then <i>Analyse → Analyse match</i>. Set <i>Settings → Analysis</i> to <i>Grandmaster</i> or <i>4-ply</i> for a stronger check than the bot itself.</li>
+        <li><b>eXtreme Gammon</b> (XG, paid, widely seen as the strongest): <i>File → Import</i>, then <i>Analyze</i>, with XG Roller for the deepest check.</li>
+        <li><b>BGBlitz</b> also imports .mat files.</li>
+      </ol>
+      <p class="small muted">If Download does nothing (some embedded pages block it), use Copy text, paste it into a plain text file and save it with a .mat ending.</p>
+      <textarea class="exptext" id="expText" readonly spellcheck="false" aria-label="The match as .mat text">${esc(matText())}</textarea>
+    </div>`;
+  }
+  function wireExport() {
+    const dl = $('#expDl'), cp = $('#expCopy'), sh = $('#expShare');
+    const name = MatExport.fileName(M, expNames());
+    if (dl) dl.onclick = () => {
+      try {
+        const url = URL.createObjectURL(new Blob([matText()], { type: 'text/plain' }));
+        const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        UI.toast('Saved ' + name);
+      } catch (e) { UI.toast('Download blocked here: use Copy text'); }
+    };
+    if (cp) cp.onclick = async () => {
+      try { await navigator.clipboard.writeText(matText()); UI.toast('Copied: paste into a .mat file'); }
+      catch (e) { const t = $('#expText'); t.focus(); t.select(); UI.toast('Select all and copy'); }
+    };
+    if (sh) sh.onclick = async () => {
+      const text = matText();
+      try {
+        const file = new File([text], name, { type: 'text/plain' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: name });
+        else await navigator.share({ title: name, text });
+      } catch (e) { if (e && e.name !== 'AbortError') UI.toast('Sharing failed: use Copy text'); }
+    };
+  }
+
   /* ---------- render ---------- */
   function render(keepScroll) {
     const el = $('#review');
@@ -242,6 +290,10 @@ const Review = (() => {
       <aside class="rvstats" id="rvStatsWrap" aria-label="Stats">
         <div class="sheet-h"><b>Stats</b><button class="iconbtn" data-close type="button" aria-label="Close">${ICON.close}</button></div>
         <div class="sheet-b" id="rvStatsBody">${statsHTML()}</div>
+      </aside>
+      <aside class="rvexport" id="rvExportWrap" aria-label="Export">
+        <div class="sheet-h"><b>Export match</b><button class="iconbtn" data-close type="button" aria-label="Close">${ICON.close}</button></div>
+        <div class="sheet-b" id="rvExportBody">${exportHTML()}</div>
       </aside>
       <div class="rvscrim" id="rvScrim"></div>`;
     el.dataset.sheet = sheet || '';
@@ -275,6 +327,8 @@ const Review = (() => {
     $('#fBand').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; filt = b.dataset.v; ensureSel(); render(); };
     $('#fWho').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; who = b.dataset.v; ensureSel(); render(); };
     $('#rvStatsBtn').onclick = () => openSheet(sheet === 'stats' ? null : 'stats');
+    $('#rvExportBtn').onclick = () => openSheet(sheet === 'export' ? null : 'export');
+    wireExport();
     $('#rvScrim').onclick = () => openSheet(null);
     el.querySelectorAll('[data-close]').forEach(x => x.onclick = () => openSheet(null));
     $('#rvList').onclick = (e) => { const b = e.target.closest('.mrow'); if (!b) return; select(+b.dataset.i); if (sheet === 'list') openSheet(null); };

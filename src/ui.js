@@ -3,6 +3,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const ICON = {
   menu: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>',
   chart: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  share: '<svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   flag: '<svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>',
@@ -696,11 +697,25 @@ const UI = (() => {
   }
   /* ---------- portrait control bar: big buttons and dice under the board ---------- */
   const bar = { btns: [], dice: null };
-  function miniDie(v, used) {
+  // dim / fresh: [left, right] halves spent / just spent (see diceHalves)
+  function miniDie(v, dim, fresh) {
     const light = Settings.humanLight;
+    dim = dim || [false, false]; fresh = fresh || [false, false];
     const P = pipDots(v).map(([x, y]) => `<circle cx="${26 + x}" cy="${26 + y}" r="4.8" fill="${light ? '#1a1d21' : '#f2efe9'}"/>`).join('');
-    return `<svg viewBox="0 0 52 52" width="48" height="48" style="opacity:${used ? .3 : 1}"><rect x="1" y="1" width="50" height="50" rx="11" fill="${light ? 'url(#gDieL) #f7f4ee' : 'url(#gDieD) #24282d'}" stroke="${light ? '#c4bcae' : '#111316'}" stroke-width="1.4"/><rect x="3.4" y="3.4" width="45.2" height="45.2" rx="9" fill="none" stroke="${light ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.13)'}" stroke-width="1.2"/>${P}</svg>`;
+    const body = `<rect x="1" y="1" width="50" height="50" rx="11" fill="${light ? 'url(#gDieL) #f7f4ee' : 'url(#gDieD) #24282d'}" stroke="${light ? '#c4bcae' : '#111316'}" stroke-width="1.4"/><rect x="3.4" y="3.4" width="45.2" height="45.2" rx="9" fill="none" stroke="${light ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.13)'}" stroke-width="1.2"/>${P}`;
+    const svg = (inner, op) => `<svg viewBox="0 0 52 52" width="48" height="48"${op ? ` style="opacity:${op}"` : ''}>${inner}</svg>`;
+    if (!dim[0] && !dim[1]) return svg(body);
+    if (dim[0] && dim[1] && !fresh[0] && !fresh[1]) return svg(body, .3);
+    const id = 'mh' + (++dieUid);
+    let s = `<defs><clipPath id="${id}l"><rect x="0" y="0" width="26" height="52"/></clipPath><clipPath id="${id}r"><rect x="26" y="0" width="26" height="52"/></clipPath></defs><g opacity=".3">${body}</g>`;
+    ['l', 'r'].forEach((h, i) => {
+      if (!dim[i]) s += `<g clip-path="url(#${id}${h})">${body}</g>`;
+      else if (fresh[i]) s += `<g class="spend" clip-path="url(#${id}${h})">${body}</g>`;
+    });
+    if (dim[0] !== dim[1]) s += `<line x1="26" y1="4" x2="26" y2="48" stroke="${light ? '#c4bcae' : '#111316'}" stroke-opacity=".5" stroke-width="1"/>`;
+    return svg(s);
   }
+  const barHalves = halvesTracker();
   function renderBar() {
     const el = $('#actbar');
     const portrait = document.getElementById('app').classList.contains('portrait');
@@ -711,17 +726,17 @@ const UI = (() => {
     if (dice) {
       const dbl = dice.vals.length === 4;
       const ord = dbl ? [0, 1] : (dice.order || [0, 1]);
-      const used = dice.rolling ? [false, false] : dbl ? [dice.used.filter(Boolean).length >= 4, false] : ord.map(i => dice.used[i]);
+      const hv = dice.rolling ? { h: [[false, false], [false, false]], fresh: [[false, false], [false, false]] } : barHalves(dice);
       const face = (k) => (dice.rolling && dice.faces && dice.faces[k]) || dice.vals[dbl ? 0 : ord[k]];
       // mid-throw: only the faces change, so the tumble isn't restarted
       const live = dice.rolling && el.querySelector('.dicebtn.rolling');
-      if (live) { live.querySelectorAll('.d').forEach((d, k) => { d.innerHTML = miniDie(face(k), false); }); return; }
+      if (live) { live.querySelectorAll('.d').forEach((d, k) => { d.innerHTML = miniDie(face(k)); }); return; }
       const now = performance.now();
       if (!dice.rolling && bar.wasRolling) bar.landAt = now;
       bar.wasRolling = !!dice.rolling;
       const landing = !dice.rolling && bar.landAt && now - bar.landAt < 420;
       const delay = (k) => landing ? ` style="animation-delay:${Math.round(k * 50 - (now - bar.landAt))}ms"` : '';
-      mid = `<button type="button" class="dicebtn${dice.rolling ? ' rolling' : landing ? ' landed' : ''}" data-b="dice" aria-label="Dice: tap to swap which is played first, or to confirm">${[0, 1].map(k => `<span class="d"${delay(k)}>${miniDie(face(k), used[k])}</span>`).join('')}</button>`;
+      mid = `<button type="button" class="dicebtn${dice.rolling ? ' rolling' : landing ? ' landed' : ''}" data-b="dice" aria-label="Dice: tap to swap which is played first, or to confirm">${[0, 1].map(k => `<span class="d"${delay(k)}>${miniDie(face(k), hv.h[k], hv.fresh[k])}</span>`).join('')}</button>`;
     } else bar.wasRolling = false;
     const had = bar.shown || new Set();
     const btn = (b) => `<button type="button" class="btnx ${b.kind === 'primary' ? 'primary' : b.kind === 'accent' ? 'accent' : ''}${had.has(b.id) ? '' : ' in'}" data-b="${b.id}" aria-label="${esc(b.aria || b.label)}">${esc(b.label)}</button>`;
