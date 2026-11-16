@@ -238,12 +238,12 @@ function dieSVG(cx, cy, v, col, opts = {}) {
   if (dim[0] !== dim[1]) s += `<line x1="0" y1="${-sz / 2 + 3}" x2="0" y2="${sz / 2 - 3}" stroke="${col.edge}" stroke-opacity=".35" stroke-width="1"/>`;
   return s + `</g>`;
 }
-// Which halves of each shown die are spent. Doubles: one half per move played, the first die first,
-// so after all four both dice are dark. Otherwise each die is spent whole.
+// Which halves of each shown die are spent. Doubles: a half per move, in order (moves played fill from
+// the first half; any that can't be played at all are the last halves), so after four both dice are dark. Otherwise each die is spent whole.
 function diceHalves(st) {
   if (st.vals.length === 4) {
-    const n = st.used.filter(Boolean).length;
-    return [[n >= 1, n >= 2], [n >= 3, n >= 4]];
+    const u = st.used.map(Boolean);
+    return [[u[0], u[1]], [u[2], u[3]]];
   }
   const ord = st.order || [0, 1];
   return ord.map(i => [!!st.used[i], !!st.used[i]]);

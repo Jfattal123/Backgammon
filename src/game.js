@@ -555,15 +555,26 @@ const Game = (() => {
     drawMoveButtons();
   }
 
+  // Dice that can't be used this turn whatever is played (only one of two, or three of a double's four):
+  // they're dimmed straight away. Doubles: the unusable quarters are the last ones, moves fill from the first.
+  function deadMask(ti, dice) {
+    if (dice[0] === dice[1]) { const dead = 4 - ti.maxTotal; return [0, 1, 2, 3].map(i => i >= 4 - dead); }
+    if (ti.maxTotal >= 2) return [false, false];
+    if (ti.maxTotal === 0) return [true, true];
+    let die = ti.forceDie;
+    if (!die) { const f = ti.finals.values().next().value; die = f && f[0] && f[0].die; }
+    return die ? dice.map(v => v !== die) : [false, false];
+  }
   function diceView(dice) {
     const vals = dice[0] === dice[1] ? [dice[0], dice[0], dice[0], dice[0]] : dice.slice();
     return { p: 0, vals, used: vals.map(() => false), order: order.slice() };
   }
   function usedFlags(vals) {
     if (!rem) return vals.map(() => false);
-    if (vals.length === 4) { const n = 4 - rem.length; return vals.map((_, i) => i < n); }
+    const c = cur(), dead = turnInfo && c.dice ? deadMask(turnInfo, c.dice) : null;
+    if (vals.length === 4) { const n = 4 - rem.length; return vals.map((_, i) => i < n || !!(dead && dead[i])); }
     const r = rem.slice();
-    return vals.map(v => { const i = r.indexOf(v); if (i >= 0) { r.splice(i, 1); return false; } return true; });
+    return vals.map((v, k) => { if (dead && dead[k]) return true; const i = r.indexOf(v); if (i >= 0) { r.splice(i, 1); return false; } return true; });
   }
   function drawMoveButtons() {
     const c = cur();
@@ -1044,6 +1055,10 @@ const Game = (() => {
     if (!opening) await board.rollDice(bv, Settings.diceAnim ? DICE_MS : 0);
     else board.drawDice({ p: 1, vals: dice.slice(), used: [false, false], order: [0, 1] });
     if (stale(ep)) return;
+    if (!opening) {
+      const dm = deadMask(R.turnInfo(c.b[1], c.b[0], dice[0], dice[1]), dice);
+      if (dm.some(Boolean)) board.drawDice({ ...bv, used: dm });
+    }
     const ctx = ctxFor(1);
     const me = c.b[1], opp = c.b[0];
     const rec = { k: 'move', p: 1, dice: dice.slice(), b: clone(c.b), ctx, subs: [] };
@@ -1260,12 +1275,13 @@ const Game = (() => {
     liveBase = base;
     let chain = Promise.resolve();
     const dbl = dice[0] === dice[1];
+    const dead = deadMask(R.turnInfo(base[1], base[0], dice[0], dice[1]), dice);
     const showDice = () => {
       // which dice are spent (a checker borne off with a bigger die counts against the smallest die that does it)
       let used;
-      if (dbl) used = [0, 1, 2, 3].map(i => i < shown.length);
+      if (dbl) used = [0, 1, 2, 3].map(i => i < shown.length || dead[i]);
       else {
-        used = [false, false];
+        used = dead.slice();
         for (const s of shown) {
           let k = view.vals.findIndex((v, i) => !used[i] && v === s.die);
           if (k < 0 && s.to < 0) { const opts = view.vals.map((v, i) => [v, i]).filter(([v, i]) => !used[i] && v >= s.from + 1).sort((a, b) => a[0] - b[0]); if (opts.length) k = opts[0][1]; }
