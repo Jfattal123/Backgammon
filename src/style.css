@@ -319,9 +319,13 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 .ln .k.amber { color: #d08a1f; } .ln .k.green { color: var(--good); }
 .ln .mv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dc-empty { color: var(--muted); font-size: 14px; padding: 6px 2px; }
-.lk { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+.lk { font-family: var(--font-ui); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
 .lk.up { color: var(--luck-good); background: color-mix(in srgb, var(--luck-good) 14%, transparent); }
 .lk.down { color: var(--luck-bad); background: color-mix(in srgb, var(--luck-bad) 14%, transparent); }
+.lk.flat { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.stat .lkrow { display: flex; justify-content: flex-end; margin-top: 4px; }
+.stat .lkrow .lk { font-size: 10.5px; padding: 1px 6px; }
+.cmp .lk { font-size: 10.5px; padding: 1px 6px; }
 .rvnav { display: flex; gap: 8px; margin-top: 5px; }
 .navbtn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 44px; padding: 0 16px 0 10px; border-radius: 12px; border: 0; background: var(--fg); color: var(--bg); font-weight: 700; font-size: 14px; cursor: pointer; }
 .navbtn.next { padding: 0 10px 0 16px; }

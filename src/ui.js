@@ -600,7 +600,8 @@ const UI = (() => {
       ${[['You', a, 0], [Game.oppName, b, 1]].map(([n, st, p]) => `<div class="stat"><div class="who"><span class="dot" style="${dotStyle(p)}"></span>${esc(n)}</div>
         <div class="pr"><span class="big" data-pr="${st.prAll == null ? '' : st.prAll}">${pr(st.prAll)}</span><span class="lbl">PR</span></div>
         <div class="rating">${prLabel(st.prAll) || 'No decisions'}</div>
-        <div class="kv"><span>Checker</span><span>${pr(st.prChecker)}</span><span>Cube</span><span>${pr(st.prCube)}</span><span>Luck</span><span>${st.luckPts >= 0 ? '+' : '−'}${Math.abs(st.luckPts).toFixed(2)}</span></div></div>`).join('')}
+        <div class="kv"><span>Checker</span><span>${pr(st.prChecker)}</span><span>Cube</span><span>${pr(st.prCube)}</span><span>Luck</span><span>${st.luckPts >= 0 ? '+' : '−'}${Math.abs(st.luckPts).toFixed(2)}</span></div>
+        ${luckTag(st) ? `<div class="lkrow">${luckTag(st)}</div>` : ''}</div>`).join('')}
     </div>`;
     el.querySelectorAll('[data-pr]').forEach(e => { if (e.dataset.pr !== '') countUp(e, +e.dataset.pr, v => v.toFixed(1)); });
   }

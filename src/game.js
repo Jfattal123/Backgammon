@@ -149,13 +149,19 @@ function prLabel(pr) {
   const t = [[2.5, 'Supernatural'], [5, 'World Class'], [7.5, 'Expert'], [12.5, 'Advanced'], [17.5, 'Intermediate'], [22.5, 'Casual'], [30, 'Beginner'], [35, 'Distracted'], [1e9, 'Awful']];
   for (const [x, n] of t) if (pr < x) return n;
 }
+// How the dice treated someone, from their average luck per roll (equity gained or lost against an
+// average roll). Same cut-offs gnubg uses for its luck rating.
 function luckLabel(perMove) {
-  const r = perMove * 10;
-  if (r > 0.6) return 'Go to Las Vegas';
-  if (r > 0.3) return 'Good dice, man!';
-  if (r < -0.6) return 'Go to bed';
-  if (r < -0.3) return 'Bad dice, man!';
+  if (perMove > 0.06) return 'Very lucky';
+  if (perMove > 0.03) return 'Lucky';
+  if (perMove < -0.06) return 'Very unlucky';
+  if (perMove < -0.03) return 'Unlucky';
   return 'Average dice';
+}
+function luckTag(st) {
+  if (!st || !st.luckN) return '';
+  const p = st.luckPer, cls = p > 0.03 ? 'up' : p < -0.03 ? 'down' : 'flat';
+  return `<span class="lk ${cls}">${luckLabel(p)}</span>`;
 }
 function rollDie() {
   const a = new Uint8Array(1);

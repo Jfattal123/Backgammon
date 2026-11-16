@@ -220,9 +220,10 @@ const Review = (() => {
         ${line('Errors', a.cnt.error + a.ccnt.error, b.cnt.error + b.ccnt.error)}
         ${line('Blunders', a.cnt.blunder + a.ccnt.blunder, b.cnt.blunder + b.ccnt.blunder)}
         ${line('Luck (pts)', sgn(a.luckPts, 2), sgn(b.luckPts, 2))}
-        ${line('Dice', a.luckN ? luckLabel(a.luckPer) : '–', b.luckN ? luckLabel(b.luckPer) : '–')}
+        ${line('Dice', luckTag(a) || '–', luckTag(b) || '–')}
       </div>${result}
-      <p class="muted small">PR is the average equity lost per decision × 500 (lower is better). Bands: doubtful 0.04, error 0.08, blunder 0.16.</p>`;
+      <p class="muted small">PR is the average equity lost per decision × 500 (lower is better). Bands: doubtful 0.04, error 0.08, blunder 0.16.</p>
+      <p class="muted small">Luck is how much the rolls helped (+) or hurt (−) compared with an average roll, in points. The tag reflects the average per roll.</p>`;
   }
 
   /* ---------- export ---------- */

@@ -325,9 +325,13 @@ select.sel.sm { min-height: 38px; padding-block: 7px; font-size: 13.5px; min-wid
 .ln .k.amber { color: #d08a1f; } .ln .k.green { color: var(--good); }
 .ln .mv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dc-empty { color: var(--muted); font-size: 14px; padding: 6px 2px; }
-.lk { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+.lk { font-family: var(--font-ui); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
 .lk.up { color: var(--luck-good); background: color-mix(in srgb, var(--luck-good) 14%, transparent); }
 .lk.down { color: var(--luck-bad); background: color-mix(in srgb, var(--luck-bad) 14%, transparent); }
+.lk.flat { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.stat .lkrow { display: flex; justify-content: flex-end; margin-top: 4px; }
+.stat .lkrow .lk { font-size: 10.5px; padding: 1px 6px; }
+.cmp .lk { font-size: 10.5px; padding: 1px 6px; }
 .rvnav { display: flex; gap: 8px; margin-top: 5px; }
 .navbtn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 44px; padding: 0 16px 0 10px; border-radius: 12px; border: 0; background: var(--fg); color: var(--bg); font-weight: 700; font-size: 14px; cursor: pointer; }
 .navbtn.next { padding: 0 10px 0 16px; }
@@ -2174,13 +2178,19 @@ function prLabel(pr) {
   const t = [[2.5, 'Supernatural'], [5, 'World Class'], [7.5, 'Expert'], [12.5, 'Advanced'], [17.5, 'Intermediate'], [22.5, 'Casual'], [30, 'Beginner'], [35, 'Distracted'], [1e9, 'Awful']];
   for (const [x, n] of t) if (pr < x) return n;
 }
+// How the dice treated someone, from their average luck per roll (equity gained or lost against an
+// average roll). Same cut-offs gnubg uses for its luck rating.
 function luckLabel(perMove) {
-  const r = perMove * 10;
-  if (r > 0.6) return 'Go to Las Vegas';
-  if (r > 0.3) return 'Good dice, man!';
-  if (r < -0.6) return 'Go to bed';
-  if (r < -0.3) return 'Bad dice, man!';
+  if (perMove > 0.06) return 'Very lucky';
+  if (perMove > 0.03) return 'Lucky';
+  if (perMove < -0.06) return 'Very unlucky';
+  if (perMove < -0.03) return 'Unlucky';
   return 'Average dice';
+}
+function luckTag(st) {
+  if (!st || !st.luckN) return '';
+  const p = st.luckPer, cls = p > 0.03 ? 'up' : p < -0.03 ? 'down' : 'flat';
+  return `<span class="lk ${cls}">${luckLabel(p)}</span>`;
 }
 function rollDie() {
   const a = new Uint8Array(1);
@@ -4225,7 +4235,8 @@ const UI = (() => {
       ${[['You', a, 0], [Game.oppName, b, 1]].map(([n, st, p]) => `<div class="stat"><div class="who"><span class="dot" style="${dotStyle(p)}"></span>${esc(n)}</div>
         <div class="pr"><span class="big" data-pr="${st.prAll == null ? '' : st.prAll}">${pr(st.prAll)}</span><span class="lbl">PR</span></div>
         <div class="rating">${prLabel(st.prAll) || 'No decisions'}</div>
-        <div class="kv"><span>Checker</span><span>${pr(st.prChecker)}</span><span>Cube</span><span>${pr(st.prCube)}</span><span>Luck</span><span>${st.luckPts >= 0 ? '+' : '−'}${Math.abs(st.luckPts).toFixed(2)}</span></div></div>`).join('')}
+        <div class="kv"><span>Checker</span><span>${pr(st.prChecker)}</span><span>Cube</span><span>${pr(st.prCube)}</span><span>Luck</span><span>${st.luckPts >= 0 ? '+' : '−'}${Math.abs(st.luckPts).toFixed(2)}</span></div>
+        ${luckTag(st) ? `<div class="lkrow">${luckTag(st)}</div>` : ''}</div>`).join('')}
     </div>`;
     el.querySelectorAll('[data-pr]').forEach(e => { if (e.dataset.pr !== '') countUp(e, +e.dataset.pr, v => v.toFixed(1)); });
   }
@@ -4683,9 +4694,10 @@ const Review = (() => {
         ${line('Errors', a.cnt.error + a.ccnt.error, b.cnt.error + b.ccnt.error)}
         ${line('Blunders', a.cnt.blunder + a.ccnt.blunder, b.cnt.blunder + b.ccnt.blunder)}
         ${line('Luck (pts)', sgn(a.luckPts, 2), sgn(b.luckPts, 2))}
-        ${line('Dice', a.luckN ? luckLabel(a.luckPer) : '–', b.luckN ? luckLabel(b.luckPer) : '–')}
+        ${line('Dice', luckTag(a) || '–', luckTag(b) || '–')}
       </div>${result}
-      <p class="muted small">PR is the average equity lost per decision × 500 (lower is better). Bands: doubtful 0.04, error 0.08, blunder 0.16.</p>`;
+      <p class="muted small">PR is the average equity lost per decision × 500 (lower is better). Bands: doubtful 0.04, error 0.08, blunder 0.16.</p>
+      <p class="muted small">Luck is how much the rolls helped (+) or hurt (−) compared with an average roll, in points. The tag reflects the average per roll.</p>`;
   }
 
   /* ---------- export ---------- */
