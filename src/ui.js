@@ -547,7 +547,7 @@ const UI = (() => {
   }
 
   /* ---------- game over ---------- */
-  async function gameOver(g, M) {
+  async function gameOver(g, M, again) {
     hideBanner();
     const won = g.result.winner === 0;
     const how = g.result.how;
@@ -575,7 +575,7 @@ const UI = (() => {
       };
       track = `<div class="track" aria-label="Score ${M.score[0]} to ${M.score[1]}, first to ${n}">${row(0)}${row(1)}</div>`;
     }
-    if (won) Confetti.burst(matchOver && !!M.matchTo);
+    if (won && !again) Confetti.burst(matchOver && !!M.matchTo);
     const s = openCard(`<div class="gohead">${won ? `<div class="gobadge win" aria-hidden="true">+${pts}</div>` : ''}<div style="flex:1;min-width:0"><h2>${esc(title)}</h2><p class="sub">${esc(subtitle)}</p></div></div>
       ${track}
       <div id="goStats"><span class="loading"><span class="spin"></span>Finishing the analysis…</span></div>
@@ -764,5 +764,12 @@ const UI = (() => {
     el.hidden = false;
     el.onclick = (e) => { const x = e.target.closest('[data-b]'); if (x) Game.button(x.dataset.b); };
   }
-  return { init, toast, update, showSetup, closeCard, renderBar, placeMenu };
+  // Back from Review with a finished game still waiting: bring its card (Next game / Rematch) back
+  function afterReview(match) {
+    const M = Game.M;
+    if (!M || match !== M || Game.phase !== 'over' || $('#scrim .card')) return;
+    const g = M.games[M.games.length - 1];
+    if (g && g.result) gameOver(g, M, true);
+  }
+  return { init, toast, update, showSetup, closeCard, renderBar, placeMenu, afterReview };
 })();

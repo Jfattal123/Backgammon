@@ -428,6 +428,6 @@ const Review = (() => {
   }
   // Escape: close an open sheet first, then the review
   function back() { if (sheet) openSheet(null); else close(); }
-  function close() { $('#review').hidden = true; $('#review').innerHTML = ''; }
+  function close() { $('#review').hidden = true; $('#review').innerHTML = ''; if (UI.afterReview) UI.afterReview(M); }
   return { open, close, back };
 })();
