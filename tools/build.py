@@ -10,7 +10,11 @@ shell = open('src/shell.html').read()
 css = open('src/style.css').read()
 js = '\n'.join(open('src/' + f).read() for f in ['rules.js', 'board.js', 'net.js', 'game.js', 'ui.js', 'matexport.js', 'review.js'])
 js = js.replace("if (typeof module !== 'undefined') module.exports = { R };", '').replace("if (typeof module !== 'undefined') module.exports = { MatExport };", '')
-body = shell.replace('/*STYLE*/', css).replace('/*SCRIPT*/', js)
+# the tab icon, inlined so it also works inside the claude.ai artifact
+from urllib.parse import quote
+svg_icon = ' '.join(open('icons/favicon.svg').read().split())
+icon_link = '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,' + quote(svg_icon, safe=" :/=,'().-") + '">'
+body = shell.replace('<!--ICON-->', icon_link).replace('/*STYLE*/', css).replace('/*SCRIPT*/', js)
 head = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
         '<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">'
@@ -18,7 +22,8 @@ head = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
         'body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>')
 site = body.replace('<!--WORKER-->', '')
 # installable, offline-capable app (GitHub Pages only): manifest, icons and a service worker
-pwa = ('<link rel="manifest" href="manifest.webmanifest">'
+pwa = ('<link rel="icon" href="favicon.ico" sizes="32x32">'
+       '<link rel="manifest" href="manifest.webmanifest">'
        '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">'
        '<meta name="apple-mobile-web-app-title" content="Prime">'
        '<script>if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) addEventListener("load", function () {'
@@ -31,7 +36,7 @@ import hashlib
 pre = ['./', 'index.html', 'manifest.webmanifest', 'engine-worker.js', 'engine-api.js', 'gnubg-engine.js', 'gnubg-engine.wasm',
        'gnubg-engine-nosimd.js', 'gnubg-engine-nosimd.wasm', 'gnubg-engine-data.bin',
        'vendor/firebase-app-compat.js', 'vendor/firebase-auth-compat.js', 'vendor/firebase-database-compat.js',
-       'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png']
+       'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'favicon.ico', 'icons/favicon.svg']
 h = hashlib.sha1()
 for f in pre[1:]: h.update(open(f, 'rb').read())
 sw = open('src/sw.js').read().replace('__VERSION__', h.hexdigest()[:12]).replace('__PRECACHE__', json.dumps(pre))
